@@ -202,9 +202,20 @@ Void SEIWriter::xWriteSEIpayloadData(TComBitIf& bs, const SEI& sei, const TComSP
     xWriteSEIRegionWisePacking(*static_cast<const SEIRegionWisePacking*>(&sei));
     break;
 #endif
+#if FVI_SEI_MESSAGE
+  case SEI::FISHEYE_VIDEO_INFO:
+    xWriteSEIFisheyeVideoInfo(*static_cast<const SEIFisheyeVideoInfo*>(&sei));
+    break;
+#endif
 #if RNSEI
   case SEI::REGIONAL_NESTING:
     xWriteSEIRegionalNesting(bs, *static_cast<const SEIRegionalNesting*>(&sei), sps);
+    break;
+#endif
+
+#if AR_SEI_MESSAGE
+  case SEI::ANNOTATED_REGIONS:
+    xWriteSEIAnnotatedRegions(*static_cast<const SEIAnnotatedRegions*>(&sei), sps);
     break;
 #endif
   default:
@@ -1235,6 +1246,51 @@ Void SEIWriter::xWriteSEIRegionWisePacking(const SEIRegionWisePacking &sei)
 }
 #endif
 
+#if FVI_SEI_MESSAGE
+Void SEIWriter::xWriteSEIFisheyeVideoInfo(const SEIFisheyeVideoInfo &sei)
+{
+  const TComSEIFisheyeVideoInfo &info=sei.values;
+  WRITE_FLAG(info.m_fisheyeCancelFlag, "fisheye_cancel_flag");
+  if (!info.m_fisheyeCancelFlag)
+  {
+    WRITE_FLAG(info.m_fisheyePersistenceFlag, "fisheye_persistence_flag");
+    WRITE_CODE((UInt)info.m_fisheyeViewDimensionIdc, 3, "fisheye_view_dimension_idc");
+    WRITE_CODE(0, 3, "fisheye_reserved_zero_3bits");
+    assert(info.m_fisheyeActiveAreas.size());
+    WRITE_CODE((UInt)info.m_fisheyeActiveAreas.size()-1, 8, "fisheye_num_active_area_minus1");
+
+    for (std::size_t i = 0; i < info.m_fisheyeActiveAreas.size(); i++)
+    {
+      const TComSEIFisheyeVideoInfo::ActiveAreaInfo &area=info.m_fisheyeActiveAreas[i];
+      
+      WRITE_CODE((UInt)area.m_fisheyeCircularRegionCentreX, 32, "fisheye_circular_region_centre_x[i]");
+      WRITE_CODE((UInt)area.m_fisheyeCircularRegionCentreY, 32, "fisheye_circular_region_centre_y[i]");
+      WRITE_CODE((UInt)area.m_fisheyeRectRegionTop, 32, "fisheye_rect_region_top[i]");
+      WRITE_CODE((UInt)area.m_fisheyeRectRegionLeft, 32, "fisheye_rect_region_left[i]");
+      WRITE_CODE((UInt)area.m_fisheyeRectRegionWidth, 32, "fisheye_rect_region_width[i]");
+      WRITE_CODE((UInt)area.m_fisheyeRectRegionHeight, 32, "fisheye_rect_region_Height[i]");
+      WRITE_CODE((UInt)area.m_fisheyeCircularRegionRadius, 32, "fisheye_circular_region_radius[i]");
+      WRITE_CODE((UInt)area.m_fisheyeSceneRadius, 32, "fisheye_scene_radius[i]");
+
+      WRITE_SCODE((Int)area.m_fisheyeCameraCentreAzimuth, 32, "fisheye_camera_centre_azimuth[i]");
+      WRITE_SCODE((Int)area.m_fisheyeCameraCentreElevation, 32, "fisheye_camera_centre_elevation[i]");
+      WRITE_SCODE((Int)area.m_fisheyeCameraCentreTilt, 32, "fisheye_camera_centre_tilt[i]");
+
+      WRITE_CODE((UInt)area.m_fisheyeCameraCentreOffsetX, 32, "fisheye_camera_centre_offset_x[i]");
+      WRITE_CODE((UInt)area.m_fisheyeCameraCentreOffsetY, 32, "fisheye_camera_centre_offset_x[i]");
+      WRITE_CODE((UInt)area.m_fisheyeCameraCentreOffsetZ, 32, "fisheye_camera_centre_offset_z[i]");
+      WRITE_CODE((UInt)area.m_fisheyeFieldOfView, 32, "fisheye_field_of_view[i]");
+      WRITE_CODE((UInt)area.m_fisheyePolynomialCoeff.size(), 16, "fisheye_num_polynomial_coeffs[i]");
+
+      for (std::size_t j = 0; j < area.m_fisheyePolynomialCoeff.size(); j++)
+      {
+        WRITE_SCODE((Int)area.m_fisheyePolynomialCoeff[j], 32, "fisheye_polynomial_coeff[i][j]");
+      }
+    }
+  }
+}
+#endif
+
 Void SEIWriter::xWriteSEIColourRemappingInfo(const SEIColourRemappingInfo& sei)
 {
   WRITE_UVLC( sei.m_colourRemapId,                             "colour_remap_id" );
@@ -1364,6 +1420,99 @@ Void SEIWriter::xWriteSEIRegionalNesting(TComBitIf& bs, const SEIRegionalNesting
       WRITE_CODE(listOfRegions[j],               8, "regional_nesting_sei_region_idx[i][j]");
     }
     xWriteSEImessage(bs, nestedSEI, sps);
+  }
+}
+#endif
+
+#if AR_SEI_MESSAGE
+Void SEIWriter::xWriteSEIAnnotatedRegions(const SEIAnnotatedRegions &sei, const TComSPS *sps)
+{
+  WRITE_FLAG(sei.m_hdr.m_cancelFlag, "ar_cancel_flag");
+  if (!sei.m_hdr.m_cancelFlag)
+  {
+    WRITE_FLAG(sei.m_hdr.m_notOptimizedForViewingFlag, "ar_not_optimized_for_viewing_flag");
+    WRITE_FLAG(sei.m_hdr.m_trueMotionFlag, "ar_true_motion_flag");
+    WRITE_FLAG(sei.m_hdr.m_occludedObjectFlag, "ar_occluded_object_flag");
+    WRITE_FLAG(sei.m_hdr.m_partialObjectFlagPresentFlag, "ar_partial_object_flag_present_flag");
+    WRITE_FLAG(sei.m_hdr.m_objectLabelPresentFlag, "ar_object_label_present_flag");
+    WRITE_FLAG(sei.m_hdr.m_objectConfidenceInfoPresentFlag, "ar_object_confidence_info_present_flag");
+    if (sei.m_hdr.m_objectConfidenceInfoPresentFlag)
+    {
+      assert(sei.m_hdr.m_objectConfidenceLength <= 16 && sei.m_hdr.m_objectConfidenceLength>0);
+      WRITE_CODE((sei.m_hdr.m_objectConfidenceLength - 1), 4, "ar_object_confidence_length_minus_1");
+    }
+    if (sei.m_hdr.m_objectLabelPresentFlag)
+    {
+      WRITE_FLAG(sei.m_hdr.m_objectLabelLanguagePresentFlag, "ar_object_label_language_present_flag");
+      if (sei.m_hdr.m_objectLabelLanguagePresentFlag)
+      {
+        xWriteByteAlign();
+        assert(sei.m_hdr.m_annotatedRegionsObjectLabelLang.size()<256);
+        for (UInt j = 0; j < sei.m_hdr.m_annotatedRegionsObjectLabelLang.size(); j++)
+        {
+          UChar ch = sei.m_hdr.m_annotatedRegionsObjectLabelLang[j];
+          WRITE_CODE(ch, 8, "ar_object_label_language");
+        }
+        WRITE_CODE('\0', 8, "ar_label_language");
+      }
+    }
+    WRITE_UVLC((UInt)sei.m_annotatedLabels.size(), "ar_num_label_updates");
+    assert(sei.m_annotatedLabels.size()<256);
+    for(auto it=sei.m_annotatedLabels.begin(); it!=sei.m_annotatedLabels.end(); it++)
+    {
+      assert(it->first < 256);
+      WRITE_UVLC(it->first, "ar_label_idx[]");
+      const SEIAnnotatedRegions::AnnotatedRegionLabel &ar=it->second;
+      WRITE_FLAG(!ar.labelValid, "ar_label_cancel_flag");
+      if (ar.labelValid)
+      {
+        xWriteByteAlign();
+        assert(ar.label.size()<256);
+        for (UInt j = 0; j < ar.label.size(); j++)
+        {
+          UChar ch = ar.label[j];
+          WRITE_CODE(ch, 8, "ar_label[]");
+        }
+        WRITE_CODE('\0', 8, "ar_label[]");
+      }
+    }
+    WRITE_UVLC((UInt)sei.m_annotatedRegions.size(), "ar_num_object_updates");
+    assert(sei.m_annotatedRegions.size()<256);
+    for (auto it=sei.m_annotatedRegions.begin(); it!=sei.m_annotatedRegions.end(); it++)
+    {
+      const SEIAnnotatedRegions::AnnotatedRegionObject &ar = it->second;
+      WRITE_UVLC(it->first, "ar_object_idx");
+      WRITE_FLAG(ar.objectCancelFlag, "ar_object_cancel_flag");
+      if (!ar.objectCancelFlag)
+      {
+        if (sei.m_hdr.m_objectLabelPresentFlag)
+        {
+          WRITE_FLAG(ar.objectLabelValid, "ar_object_label_update_flag");
+          if (ar.objectLabelValid)
+          {
+            assert(ar.objLabelIdx<256);
+            WRITE_UVLC(ar.objLabelIdx, "ar_object_label_idx");
+          }
+        }
+        WRITE_FLAG(ar.boundingBoxValid, "ar_object_bounding_box_update_flag");
+        if (ar.boundingBoxValid)
+        {
+          WRITE_CODE(ar.boundingBoxTop,   16, "ar_bounding_box_top");
+          WRITE_CODE(ar.boundingBoxLeft,  16, "ar_bounding_box_left");
+          WRITE_CODE(ar.boundingBoxWidth, 16, "ar_bounding_box_width");
+          WRITE_CODE(ar.boundingBoxHeight,16, "ar_bounding_box_height");
+          if (sei.m_hdr.m_partialObjectFlagPresentFlag)
+          {
+            WRITE_UVLC(ar.partialObjectFlag, "ar_partial_object_flag");
+          }
+          if (sei.m_hdr.m_objectConfidenceInfoPresentFlag)
+          {
+            assert(ar.objectConfidence < (1<<sei.m_hdr.m_objectConfidenceLength));
+            WRITE_CODE(ar.objectConfidence, sei.m_hdr.m_objectConfidenceLength, "ar_object_confidence");
+          }
+        }
+      }
+    }
   }
 }
 #endif

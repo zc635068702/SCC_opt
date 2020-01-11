@@ -378,6 +378,19 @@ Void SEIReader::xReadSEIPayloadData(Int const payloadType, Int const payloadSize
       xParseSEIRegionWisePacking((SEIRegionWisePacking&) *sei, payloadSize, pDecodedMessageOutputStream);
       break;
 #endif
+
+#if AR_SEI_MESSAGE
+    case SEI::ANNOTATED_REGIONS:
+      sei = new SEIAnnotatedRegions;
+      xParseSEIAnnotatedRegions((SEIAnnotatedRegions&)*sei, payloadSize, pDecodedMessageOutputStream);
+      break;
+#endif
+#if FVI_SEI_MESSAGE
+    case SEI::FISHEYE_VIDEO_INFO:
+      sei = new SEIFisheyeVideoInfo;
+      xParseSEIFisheyeVideoInfo((SEIFisheyeVideoInfo&)*sei, payloadSize, pDecodedMessageOutputStream);
+      break;
+#endif
 #if RNSEI
     case SEI::REGIONAL_NESTING:
       sei = new SEIRegionalNesting;
@@ -1628,6 +1641,129 @@ Void SEIReader::xParseSEIOmniViewport(SEIOmniViewport& sei, UInt payloadSize, st
 }
 #endif
 
+#if AR_SEI_MESSAGE
+Void SEIReader::xParseSEIAnnotatedRegions(SEIAnnotatedRegions& sei, UInt payloadSize, std::ostream *pDecodedMessageOutputStream)
+{
+  output_sei_message_header(sei, pDecodedMessageOutputStream, payloadSize);
+  UInt val;
+
+  sei_read_flag(pDecodedMessageOutputStream, val, "ar_cancel_flag");                                   sei.m_hdr.m_cancelFlag = val;
+  if (!sei.m_hdr.m_cancelFlag)
+  {
+    sei_read_flag(pDecodedMessageOutputStream, val, "ar_not_optimized_for_viewing_flag");              sei.m_hdr.m_notOptimizedForViewingFlag = val;
+    sei_read_flag(pDecodedMessageOutputStream, val, "ar_true_motion_flag");                            sei.m_hdr.m_trueMotionFlag = val;
+    sei_read_flag(pDecodedMessageOutputStream, val, "ar_occluded_object_flag");                        sei.m_hdr.m_occludedObjectFlag = val; // must be constant
+    sei_read_flag(pDecodedMessageOutputStream, val, "ar_partial_object_flag_present_flag");            sei.m_hdr.m_partialObjectFlagPresentFlag = val; // must be constant
+    sei_read_flag(pDecodedMessageOutputStream, val, "ar_object_label_present_flag");                   sei.m_hdr.m_objectLabelPresentFlag = val;
+    sei_read_flag(pDecodedMessageOutputStream, val, "ar_object_confidence_info_present_flag");         sei.m_hdr.m_objectConfidenceInfoPresentFlag = val; // must be constant
+    if (sei.m_hdr.m_objectConfidenceInfoPresentFlag)
+    {
+      sei_read_code(pDecodedMessageOutputStream, 4, val, "ar_object_confidence_length_minus_1"); sei.m_hdr.m_objectConfidenceLength = (val + 1); // must be constant
+    }
+    if (sei.m_hdr.m_objectLabelPresentFlag)
+    {
+      sei_read_flag(pDecodedMessageOutputStream, val, "ar_object_label_language_present_flag");      sei.m_hdr.m_objectLabelLanguagePresentFlag = val;
+      if (sei.m_hdr.m_objectLabelLanguagePresentFlag)
+      {
+        // byte alignment
+        while (m_pcBitstream->getNumBitsRead() % 8 != 0)
+        {
+          UInt code;
+          sei_read_flag(pDecodedMessageOutputStream, code, "ar_bit_equal_to_zero");
+        }
+        sei.m_hdr.m_annotatedRegionsObjectLabelLang.clear();
+        do
+        {
+          sei_read_code(pDecodedMessageOutputStream, 8, val, "ar_label_language");
+          if (val)
+          {
+            assert(sei.m_hdr.m_annotatedRegionsObjectLabelLang.size()<256);
+            sei.m_hdr.m_annotatedRegionsObjectLabelLang.push_back((char)val);
+          }
+        } while (val != '\0');
+      }
+    }
+
+    UInt numLabelUpdates;
+    sei_read_uvlc(pDecodedMessageOutputStream, numLabelUpdates, "ar_num_label_updates");
+    assert(numLabelUpdates<256);
+
+    sei.m_annotatedLabels.clear();
+    sei.m_annotatedLabels.resize(numLabelUpdates);
+    for (auto it=sei.m_annotatedLabels.begin(); it!=sei.m_annotatedLabels.end(); it++)
+    {
+      SEIAnnotatedRegions::AnnotatedRegionLabel &ar = it->second;
+      sei_read_uvlc(pDecodedMessageOutputStream, val, "ar_label_idx[]");             it->first = val;
+      assert(val<256);
+      sei_read_flag(pDecodedMessageOutputStream, val, "ar_label_cancel_flag");       ar.labelValid = !val;
+      if (ar.labelValid)
+      {
+        ar.label.clear();
+        // byte alignment
+        while (m_pcBitstream->getNumBitsRead() % 8 != 0)
+        {
+          UInt code;
+          sei_read_flag(pDecodedMessageOutputStream, code, "ar_bit_equal_to_zero");
+        }
+        do
+        {
+          sei_read_code(pDecodedMessageOutputStream, 8, val, "ar_label[]");
+          if (val)
+          {
+            assert(ar.label.size()<256);
+            ar.label.push_back((char)val);
+          }
+        } while (val != '\0');
+      }
+    }
+
+    UInt numObjUpdates;
+    sei_read_uvlc(pDecodedMessageOutputStream, numObjUpdates, "ar_num_object_updates");
+    assert(numObjUpdates<256);
+    sei.m_annotatedRegions.clear();
+    sei.m_annotatedRegions.resize(numObjUpdates);
+    for (auto it=sei.m_annotatedRegions.begin(); it!=sei.m_annotatedRegions.end(); it++)
+    {
+      sei_read_uvlc(pDecodedMessageOutputStream, val, "ar_object_idx"); it->first=val;
+      assert(val<256);
+      SEIAnnotatedRegions::AnnotatedRegionObject &ar = it->second;
+      sei_read_flag(pDecodedMessageOutputStream, val, "ar_object_cancel_flag");                           ar.objectCancelFlag = val;
+      ar.objectLabelValid=false;
+      ar.boundingBoxValid=false;
+
+      if (!ar.objectCancelFlag)
+      {
+        if (sei.m_hdr.m_objectLabelPresentFlag)
+        {
+          sei_read_flag(pDecodedMessageOutputStream, val, "ar_object_label_update_flag");             ar.objectLabelValid = val;
+          if (ar.objectLabelValid)
+          {
+            sei_read_uvlc(pDecodedMessageOutputStream, val, "ar_object_label_idx");                      ar.objLabelIdx = val;
+            assert(val<256);
+          }
+        }
+        sei_read_flag(pDecodedMessageOutputStream, val, "ar_bounding_box_update_flag");              ar.boundingBoxValid = val;
+        if (ar.boundingBoxValid)
+        {
+          sei_read_code(pDecodedMessageOutputStream, 16, val, "ar_bounding_box_top");                      ar.boundingBoxTop = val;
+          sei_read_code(pDecodedMessageOutputStream, 16, val, "ar_bounding_box_left");                     ar.boundingBoxLeft = val;
+          sei_read_code(pDecodedMessageOutputStream, 16, val, "ar_bounding_box_width");                    ar.boundingBoxWidth = val;
+          sei_read_code(pDecodedMessageOutputStream, 16, val, "ar_bounding_box_height");                   ar.boundingBoxHeight = val;
+          if (sei.m_hdr.m_partialObjectFlagPresentFlag)
+          {
+            sei_read_flag(pDecodedMessageOutputStream, val, "ar_partial_object_flag");                ar.partialObjectFlag = val;
+          }
+          if (sei.m_hdr.m_objectConfidenceInfoPresentFlag)
+          {
+            sei_read_code(pDecodedMessageOutputStream, sei.m_hdr.m_objectConfidenceLength, val, "ar_object_confidence"); ar.objectConfidence = val;
+          }
+        }
+      }
+    }
+  }
+}
+#endif
+
 #if CMP_SEI_MESSAGE
 Void SEIReader::xParseSEICubemapProjection(SEICubemapProjection& sei, UInt payloadSize, std::ostream *pDecodedMessageOutputStream)
 {
@@ -1704,6 +1840,59 @@ Void SEIReader::xParseSEIRegionWisePacking(SEIRegionWisePacking& sei, UInt paylo
           sei_read_code( pDecodedMessageOutputStream, 3,  val,     "rwp_guard_band_type" ); sei.m_rwpGuardBandType[i*4 + j] = val;
         }
         sei_read_code( pDecodedMessageOutputStream,   3,  val,    "rwp_guard_band_reserved_zero_3bits" );
+      }
+    }
+  }
+}
+#endif
+
+#if FVI_SEI_MESSAGE
+Void SEIReader::xParseSEIFisheyeVideoInfo(SEIFisheyeVideoInfo& sei, UInt payloadSize, std::ostream *pDecodedMessageOutputStream)
+{
+  UInt val;
+
+  output_sei_message_header(sei, pDecodedMessageOutputStream, payloadSize);
+  sei.values = TComSEIFisheyeVideoInfo();
+  
+  TComSEIFisheyeVideoInfo &info=sei.values;
+
+  sei_read_flag(pDecodedMessageOutputStream, val, "fisheye_cancel_flag"); info.m_fisheyeCancelFlag = val;
+  if (!info.m_fisheyeCancelFlag)
+  {
+    Int sval;
+
+    sei_read_flag(pDecodedMessageOutputStream, val, "fisheye_persistence_flag");        info.m_fisheyePersistenceFlag = val;
+    sei_read_code(pDecodedMessageOutputStream, 3, val, "fisheye_view_dimension_idc");   info.m_fisheyeViewDimensionIdc = val;
+    sei_read_code(pDecodedMessageOutputStream, 3, val, "fisheye_reserved_zero_3bits");
+    sei_read_code(pDecodedMessageOutputStream, 8, val, "fisheye_num_active_area_minus1");
+    info.m_fisheyeActiveAreas.resize(val+1);
+
+    for (std::size_t i = 0; i < info.m_fisheyeActiveAreas.size(); i++)
+    {
+      TComSEIFisheyeVideoInfo::ActiveAreaInfo &area=info.m_fisheyeActiveAreas[i];
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_circular_region_centre_x[i]");  area.m_fisheyeCircularRegionCentreX = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_circular_region_centre_y[i]");  area.m_fisheyeCircularRegionCentreY = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_rect_region_top[i]");           area.m_fisheyeRectRegionTop = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_rect_region_left[i]");          area.m_fisheyeRectRegionLeft = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_rect_region_width[i]");         area.m_fisheyeRectRegionWidth = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_rect_region_Height[i]");        area.m_fisheyeRectRegionHeight = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_circular_region_radius[i]");    area.m_fisheyeCircularRegionRadius = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_scene_radius[i]");              area.m_fisheyeSceneRadius = val;
+
+      sei_read_scode(pDecodedMessageOutputStream, 32, sval, "fisheye_camera_centre_azimuth[i]");   area.m_fisheyeCameraCentreAzimuth = sval;
+      sei_read_scode(pDecodedMessageOutputStream, 32, sval, "fisheye_camera_centre_elevation[i]"); area.m_fisheyeCameraCentreElevation = sval;
+      sei_read_scode(pDecodedMessageOutputStream, 32, sval, "fisheye_camera_centre_tilt[i]");      area.m_fisheyeCameraCentreTilt = sval;
+
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_camera_centre_offset_x[i]");    area.m_fisheyeCameraCentreOffsetX = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_camera_centre_offset_y[i]");    area.m_fisheyeCameraCentreOffsetY = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_camera_centre_offset_z[i]");    area.m_fisheyeCameraCentreOffsetZ = val;
+      sei_read_code(pDecodedMessageOutputStream, 32, val, "fisheye_field_of_view[i]");             area.m_fisheyeFieldOfView = val;
+      sei_read_code(pDecodedMessageOutputStream, 16, val, "fisheye_num_polynomial_coeffs[i]");
+      area.m_fisheyePolynomialCoeff.resize(val);
+
+      for (std::size_t j = 0; j < area.m_fisheyePolynomialCoeff.size(); j++)
+      {
+        sei_read_scode(pDecodedMessageOutputStream, 32, sval, "fisheye_polynomial_coeff[i][j]");   area.m_fisheyePolynomialCoeff[j] = sval;
       }
     }
   }

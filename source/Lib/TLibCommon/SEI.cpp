@@ -91,6 +91,9 @@ const std::vector<SEI::PayloadType> SEI::prefix_sei_messages({
 #if RWP_SEI_MESSAGE
   , SEI::REGION_WISE_PACKING
 #endif
+#if FVI_SEI_MESSAGE
+  , SEI::FISHEYE_VIDEO_INFO
+#endif
 #if RNSEI
   , SEI::REGIONAL_NESTING
 #endif
@@ -318,11 +321,17 @@ const TChar *SEI::getSEIMessageString(SEI::PayloadType payloadType)
 #if RWP_SEI_MESSAGE
     case SEI::REGION_WISE_PACKING:                  return "Region wise packing information";
 #endif
+#if FVI_SEI_MESSAGE
+    case SEI::FISHEYE_VIDEO_INFO:                   return "Fisheye video information";
+#endif
 #if RNSEI
     case SEI::REGIONAL_NESTING:                     return "Regional nesting";
 #endif
 #if MCTS_EXTRACTION
     case SEI::MCTS_EXTRACTION_INFO_SET:             return "MCTS extraction information";
+#endif
+#if AR_SEI_MESSAGE
+    case SEI::ANNOTATED_REGIONS:                    return "Annotated Region";
 #endif
     default:                                        return "Unknown";
   }

@@ -38,6 +38,7 @@
 #include <list>
 #include <vector>
 #include <cstring>
+#include <map>
 
 #include "CommonDef.h"
 #include "libmd5/MD5.h"
@@ -103,6 +104,9 @@ public:
 #if CMP_SEI_MESSAGE
     CUBEMAP_PROJECTION                   = 151,
 #endif
+#if FVI_SEI_MESSAGE
+    FISHEYE_VIDEO_INFO                   = 152,
+#endif
 #if RWP_SEI_MESSAGE
     REGION_WISE_PACKING                  = 155, 
 #endif
@@ -111,6 +115,9 @@ public:
 #endif
 #if MCTS_EXTRACTION
     MCTS_EXTRACTION_INFO_SET             = 158,
+#endif
+#if AR_SEI_MESSAGE
+    ANNOTATED_REGIONS                    = 202,
 #endif
   };
 
@@ -845,6 +852,72 @@ public:
 };
 #endif
 
+#if AR_SEI_MESSAGE
+class SEIAnnotatedRegions : public SEI
+{
+public:
+  PayloadType payloadType() const { return ANNOTATED_REGIONS; }
+  SEIAnnotatedRegions() {}
+  virtual ~SEIAnnotatedRegions() {}
+
+  Void copyFrom(const SEIAnnotatedRegions &seiAnnotatedRegions)
+  {
+    (*this) = seiAnnotatedRegions;
+  }
+
+  struct AnnotatedRegionObject
+  {
+    AnnotatedRegionObject() :
+      objectCancelFlag(false),
+      objectLabelValid(false),
+      boundingBoxValid(false)
+    { }
+    Bool objectCancelFlag;
+
+    Bool objectLabelValid;
+    UInt objLabelIdx;            // only valid if bObjectLabelValid
+
+    Bool boundingBoxValid;
+    UInt boundingBoxTop;         // only valid if bBoundingBoxValid
+    UInt boundingBoxLeft;
+    UInt boundingBoxWidth;
+    UInt boundingBoxHeight;
+
+    Bool partialObjectFlag;        // only valid if bPartialObjectFlagValid
+    UInt objectConfidence;
+  };
+  struct AnnotatedRegionLabel
+  {
+    AnnotatedRegionLabel() : labelValid(false) { }
+    Bool        labelValid;
+    std::string label;           // only valid if bLabelValid
+  };
+
+  struct AnnotatedRegionHeader
+  {
+    AnnotatedRegionHeader() : m_cancelFlag(true), m_receivedSettingsOnce(false) { }
+    Bool      m_cancelFlag;
+    Bool      m_receivedSettingsOnce; // used for decoder conformance checking. Other confidence flags must be unchanged once this flag is set.
+
+    Bool      m_notOptimizedForViewingFlag;
+    Bool      m_trueMotionFlag;
+    Bool      m_occludedObjectFlag;
+    Bool      m_partialObjectFlagPresentFlag;
+    Bool      m_objectLabelPresentFlag;
+    Bool      m_objectConfidenceInfoPresentFlag;
+    UInt      m_objectConfidenceLength;         // Only valid if m_objectConfidenceInfoPresentFlag
+    Bool      m_objectLabelLanguagePresentFlag; // Only valid if m_objectLabelPresentFlag
+    std::string m_annotatedRegionsObjectLabelLang;
+  };
+  typedef UInt AnnotatedRegionObjectIndex;
+  typedef UInt AnnotatedRegionLabelIndex;
+
+  AnnotatedRegionHeader m_hdr;
+  std::vector<std::pair<AnnotatedRegionObjectIndex, AnnotatedRegionObject> > m_annotatedRegions;
+  std::vector<std::pair<AnnotatedRegionLabelIndex,  AnnotatedRegionLabel>  > m_annotatedLabels;
+};
+#endif
+
 #if CMP_SEI_MESSAGE 
 class SEICubemapProjection : public SEI
 {
@@ -888,6 +961,17 @@ public:
   std::vector<UChar>    m_rwpBottomGuardBandHeight;
   std::vector<Bool>     m_rwpGuardBandNotUsedForPredFlag;
   std::vector<UChar>    m_rwpGuardBandType;
+};
+#endif
+
+#if FVI_SEI_MESSAGE
+class SEIFisheyeVideoInfo : public SEI
+{
+public:
+  PayloadType payloadType() const { return FISHEYE_VIDEO_INFO; }
+  SEIFisheyeVideoInfo() {}
+  virtual ~SEIFisheyeVideoInfo() {}
+  TComSEIFisheyeVideoInfo values;
 };
 #endif
 

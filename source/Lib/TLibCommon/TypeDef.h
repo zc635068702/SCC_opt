@@ -81,6 +81,11 @@
 // Tool Switches - transitory (these macros are likely to be removed in future revisions)
 // ====================================================================================================================
 
+#define JVET_K0390_RATE_CTRL                              1
+#if JVET_K0390_RATE_CTRL
+#define JVET_M0600_RATE_CTRL                              1
+#endif
+
 #define DECODER_CHECK_SUBSTREAM_AND_SLICE_TRAILING_BYTES  1 ///< TODO: integrate this macro into a broader conformance checking system.
 #define X0038_LAMBDA_FROM_QP_CAPABILITY                   1 ///< This approach derives lambda from QP+QPoffset+QPoffset2. QPoffset2 is derived from QP+QPoffset using a linear model that is clipped between 0 and 3.
                                                             // To use this capability enable config parameter LambdaFromQpEnable
@@ -102,7 +107,11 @@
 #define CMP_SEI_MESSAGE                                   1 // cubemap projection SEI message
 #define ERP_SR_OV_SEI_MESSAGE                             1 // equirectangular projection, sphere rotation, and omni viewport SEI message
 
+#define FVI_SEI_MESSAGE                                   1 // Fisheye Video Information SEI message	
+
 #define RNSEI                                             1  ///< Support for signalling regional nesting SEI message
+
+#define AR_SEI_MESSAGE                                    1  ///< Annotated Region SEI message
 
 #define FIXSAORESETAFTERIRAP                              1 // Fix the reset mechanism for SAO after an IRAP for the case of IRAP period equal to gop size.
 #define ADD_RESET_ENCODER_DECISIONS_AFTER_IRAP            1 // Add support to reseting encoder decisions after IRAP, to enable independent/parallel coding of randomaccess configuration intra-periods.
@@ -160,7 +169,7 @@
 #define FULL_NBIT                                         1 ///< When enabled, use distortion measure derived from all bits of source data, otherwise discard (bitDepth - 8) least-significant bits of distortion
 #define RExt__HIGH_PRECISION_FORWARD_TRANSFORM            1 ///< 0 use original 6-bit transform matrices for both forward and inverse transform, 1 (default) = use original matrices for inverse transform and high precision matrices for forward transform
 #else
-#define FULL_NBIT                                         0 ///< When enabled, use distortion measure derived from all bits of source data, otherwise discard (bitDepth - 8) least-significant bits of distortion
+#define FULL_NBIT                                         1 ///< When enabled, use distortion measure derived from all bits of source data, otherwise discard (bitDepth - 8) least-significant bits of distortion
 #define RExt__HIGH_PRECISION_FORWARD_TRANSFORM            0 ///< 0 (default) use original 6-bit transform matrices for both forward and inverse transform, 1 = use original matrices for inverse transform and high precision matrices for forward transform
 #endif
 
@@ -1035,6 +1044,38 @@ public:
     }
   }
 };
+
+#if FVI_SEI_MESSAGE
+struct TComSEIFisheyeVideoInfo
+{
+  struct ActiveAreaInfo
+  {
+    UInt m_fisheyeCircularRegionCentreX;
+    UInt m_fisheyeCircularRegionCentreY;
+    UInt m_fisheyeRectRegionTop;
+    UInt m_fisheyeRectRegionLeft;
+    UInt m_fisheyeRectRegionWidth;
+    UInt m_fisheyeRectRegionHeight;
+    UInt m_fisheyeCircularRegionRadius;
+    UInt m_fisheyeSceneRadius;
+
+    Int  m_fisheyeCameraCentreAzimuth;
+    Int  m_fisheyeCameraCentreElevation;
+    Int  m_fisheyeCameraCentreTilt;
+    UInt m_fisheyeCameraCentreOffsetX;
+    UInt m_fisheyeCameraCentreOffsetY;
+    UInt m_fisheyeCameraCentreOffsetZ;
+    UInt m_fisheyeFieldOfView;
+    std::vector<Int> m_fisheyePolynomialCoeff;
+  };
+
+  Bool  m_fisheyeCancelFlag;
+  Bool  m_fisheyePersistenceFlag;
+  UInt  m_fisheyeViewDimensionIdc;
+  std::vector<ActiveAreaInfo> m_fisheyeActiveAreas;
+  TComSEIFisheyeVideoInfo() : m_fisheyeCancelFlag(false), m_fisheyePersistenceFlag(false), m_fisheyeViewDimensionIdc(0), m_fisheyeActiveAreas() { }
+};
+#endif
 
 class Window
 {
