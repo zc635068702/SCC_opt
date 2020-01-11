@@ -13,6 +13,7 @@ stages:
       variables:
          - $CI_PROJECT_URL == 'https://vcgit.hhi.fraunhofer.de/jct-vc/HM'
          - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == 'master'
+         - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == 'HM-SCC-extensions'
 
 build_macos:
    extends: .build_template
