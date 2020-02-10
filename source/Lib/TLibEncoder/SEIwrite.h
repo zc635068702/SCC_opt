@@ -102,6 +102,9 @@ protected:
 #if RWP_SEI_MESSAGE
   Void xWriteSEIRegionWisePacking                 (const SEIRegionWisePacking &sei);
 #endif
+#if FVI_SEI_MESSAGE
+  Void xWriteSEIFisheyeVideoInfo                  (const SEIFisheyeVideoInfo &sei);
+#endif
   Void xWriteSEIColourRemappingInfo               (const SEIColourRemappingInfo& sei);
   Void xWriteSEIDeinterlaceFieldIdentification    (const SEIDeinterlaceFieldIdentification& sei);
   Void xWriteSEIContentLightLevelInfo             (const SEIContentLightLevelInfo& sei);
@@ -111,6 +114,10 @@ protected:
   Void xWriteSEIAmbientViewingEnvironment         (const SEIAmbientViewingEnvironment& sei);
 #if RNSEI
   Void xWriteSEIRegionalNesting                   (TComBitIf& bs, const SEIRegionalNesting& sei, const TComSPS *sps);
+#endif
+
+#if AR_SEI_MESSAGE
+  Void xWriteSEIAnnotatedRegions                  (const SEIAnnotatedRegions& sei, const TComSPS *sps);
 #endif
 
   Void xWriteSEIpayloadData(TComBitIf& bs, const SEI& sei, const TComSPS *sps);

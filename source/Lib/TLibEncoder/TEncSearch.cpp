@@ -9699,8 +9699,8 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
 
     UInt depth = pcCU->getDepth( 0 );
     Int bitsAMVPBest, bitsAMVPTemp,                bitsMergeTemp;
-    Int distAMVPBest,                              distMergeTemp;
-    Int costAMVPBest,               costMergeBest, costMergeTemp;
+    Distortion distAMVPBest,                       distMergeTemp;
+    Distortion costAMVPBest,               costMergeBest, costMergeTemp;
     bitsAMVPBest = MAX_INT;
     costAMVPBest = MAX_INT;
     costMergeBest = MAX_INT;
@@ -10030,8 +10030,8 @@ Bool TEncSearch::predMixedIntraBCInterSearch( TComDataCU * pcCU,
 
         //  UInt depth = pcCU->getDepth( 0 );
         Int bitsAMVPBest, bitsAMVPTemp, bitsMergeTemp;
-        Int distAMVPBest, distMergeTemp;
-        Int costAMVPBest, costMergeBest, costMergeTemp;
+        Distortion distAMVPBest, distMergeTemp;
+        Distortion costAMVPBest, costMergeBest, costMergeTemp;
         bitsAMVPBest = MAX_INT;
         costAMVPBest = MAX_INT;
         costMergeBest = MAX_INT;
