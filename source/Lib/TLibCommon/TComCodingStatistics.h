@@ -453,6 +453,12 @@ class TComCodingStatistics
       s.bits+=numBits;
       s.count++;
       s.sum+=value;
+#if K0149_BLOCK_STATISTICS
+      if (g_bBitsStatistic)
+      {
+        g_iBitsEp += numBits;
+      }
+#endif
     }
 
     static Void IncrementStatisticEP(const std::string &str, const Int numBits, const Int value)
@@ -461,6 +467,12 @@ class TComCodingStatistics
       s.bits+=numBits;
       s.count++;
       s.sum+=value;
+#if K0149_BLOCK_STATISTICS
+      if (g_bBitsStatistic)
+      {
+        g_iBitsEp += numBits;
+      }
+#endif
     }
 
     static Void IncrementStatisticEP(const TChar *pKey, const Int numBits, const Int value)
@@ -469,6 +481,12 @@ class TComCodingStatistics
       s.bits+=numBits;
       s.count++;
       s.sum+=value;
+#if K0149_BLOCK_STATISTICS
+      if (g_bBitsStatistic)
+      {
+        g_iBitsEp += numBits;
+      }
+#endif
     }
 
     StatLogValue values;
@@ -483,6 +501,12 @@ class TComCodingStatistics
       s.bits+=inst.values.values[uiRangeBefore]-inst.values.values[uiRangeAfter];
       s.count++;
       s.sum+=val;
+#if K0149_BLOCK_STATISTICS
+      if (g_bBitsStatistic)
+      {
+        g_iBitsCabac += inst.values.values[uiRangeBefore] - inst.values.values[uiRangeAfter];
+      }
+#endif
     }
 };
 

@@ -95,6 +95,11 @@ TDecTop::TDecTop()
   g_bJustDoIt = g_bEncDecTraceDisable;
   g_nSymbolCounter = 0;
 #endif
+
+
+#if K0149_BLOCK_STATISTICS
+  g_bStatisticJustDoIt = g_bStatisticEncDecTraceDisable;
+#endif
 }
 
 TDecTop::~TDecTop()
@@ -103,6 +108,14 @@ TDecTop::~TDecTop()
   if (g_hTrace != stdout)
   {
     fclose( g_hTrace );
+  }
+#endif
+
+
+#if K0149_BLOCK_STATISTICS
+  if (g_hStatisticTrace != stdout)
+  {
+    fclose(g_hStatisticTrace);
   }
 #endif
   while (!m_prefixSEINALUs.empty())
@@ -117,6 +130,10 @@ Void TDecTop::create()
   m_cGopDecoder.create();
   m_apcSlicePilot = new TComSlice;
   m_uiSliceIdx = 0;
+
+#if CNN_FILTERING
+  m_pcCNNFilter = new TCNNFilter;
+#endif
 }
 
 Void TDecTop::destroy()
@@ -127,6 +144,15 @@ Void TDecTop::destroy()
   m_apcSlicePilot = NULL;
 
   m_cSliceDecoder.destroy();
+
+#if CNN_FILTERING
+  if (m_pcCNNFilter)
+  {
+    m_pcCNNFilter->destroy();
+    delete m_pcCNNFilter;
+    m_pcCNNFilter = NULL;
+  }
+#endif
 }
 
 Void TDecTop::init()
@@ -234,6 +260,17 @@ Void TDecTop::executeLoopFilters(Int& poc, TComList<TComPic*>*& rpcListPic)
 
   }
   TComPic*   pcPic = m_pcPicAfterILF;
+
+#if CNN_FILTERING
+#if LAYERED_CNN_FILTER
+  Bool m_backgroundLayerFlag = pcPic->getSlice(0)->getSPS()->getLayerFlag();
+  if (m_backgroundLayerFlag == false)
+#endif
+  {
+    m_pcCNNFilter->initFilter( pcPic->getSlice(0)->getSliceQp() );
+    m_pcCNNFilter->cnnFilter( pcPic );
+  }
+#endif
 
   // Execute Deblock + Cleanup
 
@@ -810,7 +847,6 @@ Bool TDecTop::xDecodeSlice(InputNALUnit &nalu, Int &iSkipFrame, Int iPOCLastDisp
   xActivateParameterSets();
 #endif
 
-
   TComSlice* pcSlice = m_pcPic->getPicSym()->getSlice(m_uiSliceIdx);
 
   if (TDecConformanceCheck::doChecking())
@@ -943,6 +979,19 @@ Void TDecTop::xDecodeVPS(const std::vector<UChar> &naluData)
   m_parameterSetManager.storeVPS(vps, naluData);
 }
 
+#if TEXT_CODEC
+Void TDecTop::xDecodeSPSHgtWdt(const std::vector<UChar> &naluData)
+{
+  TComSPS* sps = new TComSPS();
+  m_cEntropyDecoder.decodeSPSHgtWdt( sps );
+  sps_copy->setPicWidthInLumaSamples(sps->getPicWidthInLumaSamples());
+  sps_copy->setPicHeightInLumaSamples(sps->getPicHeightInLumaSamples());
+  // change to background layer
+  sps_copy->setLayerFlag(true);
+  sps = sps_copy;
+}
+#endif
+
 Void TDecTop::xDecodeSPS(const std::vector<UChar> &naluData)
 {
   TComSPS* sps = new TComSPS();
@@ -951,6 +1000,9 @@ Void TDecTop::xDecodeSPS(const std::vector<UChar> &naluData)
 #endif
   m_cEntropyDecoder.decodeSPS( sps );
   m_parameterSetManager.storeSPS(sps, naluData);
+#if TEXT_CODEC
+  sps_copy = sps;
+#endif
 }
 
 Void TDecTop::xDecodePPS(const std::vector<UChar> &naluData)
@@ -983,6 +1035,11 @@ Bool TDecTop::decode(InputNALUnit& nalu, Int& iSkipFrame, Int& iPOCLastDisplay)
       return false;
 
     case NAL_UNIT_SPS:
+#if TEXT_CODEC
+      if (sps_copy != NULL && sps_copy->getLayerFlag() == false)
+          xDecodeSPSHgtWdt(nalu.getBitstream().getFifo());
+      else
+#endif
       xDecodeSPS(nalu.getBitstream().getFifo());
       return false;
 

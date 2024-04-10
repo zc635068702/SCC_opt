@@ -110,6 +110,9 @@ private:
   TEncPreanalyzer         m_cPreanalyzer;                 ///< image characteristics analyzer for TM5-step3-like adaptive QP
 
   TEncRateCtrl            m_cRateCtrl;                    ///< Rate control class
+#if TEXT_CODEC
+  Bool                    m_backgroundLayerFlag = true;   ///< text layer: false, background layer: true
+#endif
 
 protected:
   Void  xGetNewPicBuffer  ( TComPic*& rpcPic, Int ppsId ); ///< get picture buffer which will be processed. If ppsId<0, then the ppsMap will be queried for the first match.
@@ -129,6 +132,12 @@ public:
   Void      create          ();
   Void      destroy         ();
   Void      init            (Bool isFieldCoding);
+#if TEXT_CODEC
+  Void      initTextSCC     (Bool backgroundLayerFlag, Bool textSCCFlag, int* bgColor);
+#endif
+#if 0 // IBC_MVD_ADAPT_RESOLUTION
+  Void      initIBCAdaptMvd (UInt widthAlignSize,  UInt heightAlignSize);
+#endif
   Void      deletePicBuffer ();
 
   // -------------------------------------------------------------------------------------------------------------------
@@ -205,6 +214,13 @@ public:
     m_cGOPEncoder.printOutSummary (m_uiNumAllPicCoded, isField, getOutputLogControl(), m_spsMap.getFirstPS()->getBitDepths());
   }
 
+#if IBC_MVD_ADAPT_RESOLUTION
+  Void      setMvdPrec                          ( UInt mvdPrecHor, UInt mvdPrecVer)
+  {
+    m_cRdCost.setMvdPrecHor(mvdPrecHor);
+    m_cRdCost.setMvdPrecVer(mvdPrecVer);
+  }
+#endif
 };
 
 //! \}

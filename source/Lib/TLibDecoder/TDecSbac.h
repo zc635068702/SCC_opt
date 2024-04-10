@@ -78,12 +78,18 @@ public:
   Void  setBitstream              ( TComInputBitstream* p  ) { m_pcBitstream = p; m_pcTDecBinIf->init( p ); }
   Void  parseVPS                  ( TComVPS* /*pcVPS*/ ) {}
   Void  parseSPS                  ( TComSPS* /*pcSPS*/ ) {}
+#if TEXT_CODEC
+  Void  parseSPSHgtWdt            ( TComSPS* /*pcSPS*/ ) {}
+#endif
   Void  parsePPS                  ( TComPPS* /*pcPPS*/ ) {}
 
   Void  parseSliceHeader          ( TComSlice* /*pcSlice*/, ParameterSetManager* /*parameterSetManager*/, const Int /*prevTid0POC*/) {}
   Void  parseTerminatingBit       ( UInt& ruiBit );
   Void  parseRemainingBytes       ( Bool noTrailingBytesExpected);
   Void  parseMVPIdx               ( Int& riMVPIdx          );
+#if PMVP_ON
+  Void  parseMVPPosIdx            ( UInt& ruiMVPPosIdx, UInt uiMaxSymbol );
+#endif
   Void  parseSaoMaxUvlc           ( UInt& val, UInt maxSymbol );
   Void  parseSaoMerge             ( UInt&  ruiVal   );
   Void  parseSaoTypeIdx           ( UInt&  ruiVal  );
@@ -181,6 +187,9 @@ private:
   ContextModel3DBuffer m_cCUQtCbfSCModel;
   ContextModel3DBuffer m_cCUTransSubdivFlagSCModel;
   ContextModel3DBuffer m_cCUQtRootCbfSCModel;
+#if IBC_MVD_ADAPT_RESOLUTION
+  ContextModel3DBuffer m_cCUIBCMvd32PelSCModel;
+#endif
 
   ContextModel3DBuffer m_cCUSigCoeffGroupSCModel;
   ContextModel3DBuffer m_cCUSigSCModel;

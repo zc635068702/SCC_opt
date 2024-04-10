@@ -53,6 +53,14 @@
 #include "SEIread.h"
 #include "TDecConformance.h"
 
+#if TEXT_CODEC
+#include "Utilities/displacement.h"
+#include "Utilities/text_optimization_main.h"
+#endif
+#if CNN_FILTERING
+#include "TLibCommon/TCNNFilter.h"
+#endif
+
 class InputNALUnit;
 
 //! \ingroup TLibDecoder
@@ -90,6 +98,9 @@ private:
   TDecBinCABAC            m_cBinCABAC;
   SEIReader               m_seiReader;
   TComLoopFilter          m_cLoopFilter;
+#if CNN_FILTERING
+  TCNNFilter*             m_pcCNNFilter;
+#endif
   TComSampleAdaptiveOffset m_cSAO;
   TDecConformanceCheck    m_conformanceCheck;
 
@@ -169,6 +180,11 @@ public:
   Bool  isCurrPicAsRef() {return m_bIBC;}
   Void  updateCurrentPictureFlag(TComList<TComPic*>* pcListPic);
 
+#if TEXT_CODEC
+  TDecGop*  getGOPDecoder()                  { return  &m_cGopDecoder; }
+  TComSPS*  sps_copy = NULL;
+#endif
+
 protected:
   Void  xGetNewPicBuffer  (const TComSPS &sps, const TComPPS &pps, TComPic*& rpcPic, const UInt temporalLayer);
   Void  xCreateLostPicture (Int iLostPOC);
@@ -182,6 +198,9 @@ protected:
 #endif
   Void      xDecodeVPS(const std::vector<UChar> &naluData);
   Void      xDecodeSPS(const std::vector<UChar> &naluData);
+#if TEXT_CODEC
+  Void      xDecodeSPSHgtWdt(const std::vector<UChar> &naluData);
+#endif
   Void      xDecodePPS(const std::vector<UChar> &naluData);
   Void      xUpdatePreviousTid0POC( TComSlice *pSlice ) { if ((pSlice->getTLayer()==0) && (pSlice->isReferenceNalu() && (pSlice->getNalUnitType()!=NAL_UNIT_CODED_SLICE_RASL_R)&& (pSlice->getNalUnitType()!=NAL_UNIT_CODED_SLICE_RADL_R))) { m_prevTid0POC=pSlice->getPOC(); } }
 #if MCTS_EXTRACTION

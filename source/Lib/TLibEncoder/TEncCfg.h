@@ -46,6 +46,10 @@
 #include "TLibCommon/TComSlice.h"
 #include <assert.h>
 
+#if TEXT_CODEC
+#include "Utilities/displacement.h"
+#endif
+
 struct GOPEntry
 {
   Int m_POC;
@@ -554,6 +558,11 @@ protected:
   Bool      m_palettePredInPPSEnabled;
   Bool      m_palettePredInSPSEnabled;
   Bool      m_disableIntraBoundaryFilter;
+#if TEXT_CODEC
+  DisplacementParameterSet * m_TextSCCParameterSet;
+  Int       m_textSCCDisplaceAlignSizeinWidth;
+  Int       m_textSCCDisplaceAlignSizeinHeight;
+#endif
 
 public:
   TEncCfg()
@@ -637,6 +646,11 @@ public:
 
   Int       getMaxTempLayer                 ()                              { return m_maxTempLayer;              } 
   Void      setMaxTempLayer                 ( Int maxTempLayer )            { m_maxTempLayer = maxTempLayer;      }
+#if CNN_FILTERING
+  UInt      getMaxCUWidth                   ()               { return m_maxCUWidth;  }
+  UInt      getMaxCUHeight                  ()               { return m_maxCUHeight; }
+  UInt      getMaxTotalCUDepth              ()               { return m_maxTotalCUDepth; }
+#endif
   Void      setMaxCUWidth                   ( UInt  u )      { m_maxCUWidth  = u; }
   Void      setMaxCUHeight                  ( UInt  u )      { m_maxCUHeight = u; }
   Void      setMaxTotalCUDepth              ( UInt  u )      { m_maxTotalCUDepth = u; }
@@ -1387,6 +1401,13 @@ public:
   Void      setTransquantBypassInferTUSplit     (Bool flag)         { m_bTransquantBypassInferTUSplit = flag; }
   Bool      getNoTUSplitIntraACTEnabled         () const            { return m_bNoTUSplitIntraACTEnabled; }
   Void      setNoTUSplitIntraACTEnabled         (Bool flag)         { m_bNoTUSplitIntraACTEnabled = flag; }
+
+#if TEXT_CODEC
+  Void      setTextSCCParameterSet              ( DisplacementParameterSet* dps )  { m_TextSCCParameterSet = dps;  }
+  DisplacementParameterSet* getTextSCCParameterSet              () const           { return m_TextSCCParameterSet; }
+  Void         setTextSCCDisplaceAlignSizeinWidth(Int i)                   { m_textSCCDisplaceAlignSizeinWidth = i;}
+  Void         setTextSCCDisplaceAlignSizeinHeight(Int i)                  { m_textSCCDisplaceAlignSizeinHeight = i;}
+#endif
 };
 
 //! \}

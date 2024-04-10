@@ -88,6 +88,14 @@ Void TEncEntropy::encodeSPS( const TComSPS* pcSPS )
   return;
 }
 
+#if TEXT_CODEC
+Void TEncEntropy::encodeSPSHgtWdt( const TComSPS* pcSPS )
+{
+  m_pcEntropyCoderIf->codeSPSHgtWdt( pcSPS );
+  return;
+}
+#endif
+
 Void TEncEntropy::encodePaletteModeInfo( TComDataCU* pcCU, UInt absPartIdx, Bool bRD, Bool* bCodeDQP, Bool* codeChromaQpAdj )
 {
   if ( pcCU->getSlice()->getSPS()->getSpsScreenExtension().getUsePaletteMode() )
@@ -519,8 +527,13 @@ Void TEncEntropy::encodePUWise( TComDataCU* pcCU, UInt uiAbsPartIdx )
         if ( pcCU->getSlice()->getNumRefIdx( RefPicList( uiRefListIdx ) ) > 0 )
         {
           encodeRefFrmIdxPU ( pcCU, uiSubPartIdx, RefPicList( uiRefListIdx ) );
+#if MVP_MVD_DECODE
+          encodeMVPIdxPU    ( pcCU, uiSubPartIdx, RefPicList( uiRefListIdx ) );
+          encodeMvdPU       ( pcCU, uiSubPartIdx, RefPicList( uiRefListIdx ) );
+#else
           encodeMvdPU       ( pcCU, uiSubPartIdx, RefPicList( uiRefListIdx ) );
           encodeMVPIdxPU    ( pcCU, uiSubPartIdx, RefPicList( uiRefListIdx ) );
+#endif
 #if ENVIRONMENT_VARIABLE_DEBUG_AND_TEST
           if (bDebugPred)
           {

@@ -160,6 +160,17 @@ extern UInt64 g_nSymbolCounter;
 
 #endif
 
+#if K0149_BLOCK_STATISTICS
+extern FILE*  g_hStatisticTrace;
+extern Bool   g_bStatisticJustDoIt;
+extern const Bool g_bStatisticEncDecTraceEnable;
+extern const Bool g_bStatisticEncDecTraceDisable;
+extern Bool g_bBitsStatistic;
+extern Int64 g_iBitsCabac;
+extern Int64 g_iBitsEp;
+#endif
+
+
 const TChar* nalUnitTypeToString(NalUnitType type);
 
 extern const TChar *MatrixType[SCALING_LIST_SIZE_NUM][SCALING_LIST_NUM];

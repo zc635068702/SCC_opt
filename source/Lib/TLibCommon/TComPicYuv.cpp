@@ -332,6 +332,83 @@ Void TComPicYuv::dump (const std::string &fileName, const BitDepths &bitDepths, 
   fclose(pFile);
 }
 
+#if TEXT_CODEC
+void TComPicYuv::dumpYuvToMat444(std::vector<cv::Mat>& cvMatYuvPlanes, int bitDepths[MAX_NUM_COMPONENT], const bool bForceTo8Bit)
+{
+  bool is16bit = false;
+  for (int comp = 0; comp < getNumberValidComponents() && !bForceTo8Bit; comp++)
+  {
+    if (bitDepths[toChannelType(ComponentID(comp))] > 8)
+    {
+      is16bit = true;
+    }
+  }
+
+  const int height444 = getHeight(COMPONENT_Y);
+  const int width444 = getWidth(COMPONENT_Y);
+
+  for (int comp = 0; comp < getNumberValidComponents(); comp++)
+  {
+    cv::Mat cvMat444 = cv::Mat_<unsigned char>(height444, width444);
+
+    const ComponentID  compId = ComponentID(comp);
+    const Pel         *src = getAddr(compId);
+    const int          stride = getStride(compId);
+    const int          width = getWidth(compId);
+
+    const uint32_t csx_src = getComponentScaleX(compId);
+    const uint32_t csy_src = getComponentScaleY(compId);
+    const uint32_t mask_y = (1 << csy_src) - 1;
+    const uint32_t mask_x = (1 << csx_src) - 1;
+    assert(mask_x == mask_y); // 444 or 420
+    const uint32_t mask = mask_x;
+
+    if (is16bit)
+    {
+      cout << "TEXT_CODEC does not support higher than 8 bits temporarily" << endl;
+      abort();
+    }
+    else
+    {
+      const int shift = bitDepths[toChannelType(compId)] - 8;
+      const int offset = (shift > 0) ? (1 << (shift - 1)) : 0;
+      for (int y444 = 0; y444 < height444; y444++)
+      {
+        if ((y444 & mask) == 0)
+        {
+          for (int x = 0; x < width; x++)
+          {
+            unsigned char uc = (unsigned char)Clip3<Pel>(0, 255, (src[x] + offset) >> shift);
+            if (mask == 0)
+            {
+              cvMat444.at<unsigned char>(y444, x) = uc;
+            }
+            else
+            {
+              // UV upsampling for 420 format
+              cvMat444.at<unsigned char>(y444, 2 * x) = uc;
+              cvMat444.at<unsigned char>(y444, 2 * x + 1) = uc;
+              cvMat444.at<unsigned char>(y444 + 1, 2 * x) = uc;
+              cvMat444.at<unsigned char>(y444 + 1, 2 * x + 1) = uc;
+            }
+          }
+          src += stride;
+        }
+      }
+    }
+    cvMatYuvPlanes.push_back(cvMat444);
+  }
+}
+
+void TComPicYuv::xyuvLayerAndStitch(TComPicYuv *picText, DisplacementParameterSet* dps, const bool layerFlag, const ChromaFormat chromaFormat)
+{
+  for (int comp = 0; comp < getNumberValidComponents(); comp++)
+  {
+    const ComponentID compId = ComponentID(comp);
+    textBlockDisplacement(dps, getAddr(compId), picText->getAddr(compId), getStride(compId), picText->getStride(compId), getComponentScaleX(compId), chromaFormat, comp, layerFlag);
+  }
+}
+#endif
 
 TComPicYuv& TComPicYuv::operator= (const TComPicYuv& sComPicYuv)
 {

@@ -44,3 +44,6 @@ source_group( "Natvis Files" FILES ${NATVIS_FILES} )
 
 # set the folder where to place the projects
 set_target_properties( ${LIB_NAME} PROPERTIES FOLDER lib )
+
+# torch
+target_link_libraries( ${LIB_NAME} "${TORCH_LIBRARIES}")

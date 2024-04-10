@@ -218,6 +218,11 @@ Void SEIWriter::xWriteSEIpayloadData(TComBitIf& bs, const SEI& sei, const TComSP
     xWriteSEIAnnotatedRegions(*static_cast<const SEIAnnotatedRegions*>(&sei), sps);
     break;
 #endif
+#if TEXT_CODEC
+  case SEI::TEXT_SCC_INFO:
+    xWriteSEITextSCCInfo(*static_cast<const SEITextSCCInfo*>(&sei));
+    break;
+#endif
   default:
     assert(!"Trying to write unhandled SEI message");
     break;
@@ -1516,6 +1521,67 @@ Void SEIWriter::xWriteSEIAnnotatedRegions(const SEIAnnotatedRegions &sei, const 
   }
 }
 #endif
+
+#if TEXT_CODEC
+Void SEIWriter::xWriteSEITextSCCInfo(const SEITextSCCInfo &sei)
+{
+  // 1.rowNumber       2.charBoxHeight         3.topOfFirstChar
+  // 4.leftOfFirstChar 5.rightOfLastChar       6.widthAlignSize
+  // 7.charBoxNum      8.intervalOfLeftOfChars 9.biasOfLeftOfChars
+  vector<int> dataflow;
+  vector<int>::iterator iter;
+  DisplacementParameterSet* dps = sei.dpsInfo;
+
+  WRITE_CODE(dps->rowNumber, 8, "rowNumber");
+
+  dataflow = dps->charBoxHeightDiff;
+  for(iter = dataflow.begin(); iter != dataflow.end(); iter++)
+  {
+    WRITE_SVLC(*iter, "charBoxHeight");
+  }
+
+  dataflow = dps->topOfFirstCharDiff;
+  for(iter = dataflow.begin(); iter != dataflow.end(); iter++)
+  {
+    WRITE_SCODE(*iter, 12, "topOfFirstChar");
+  }
+
+  dataflow = dps->leftOfFirstCharDiff;
+  for(iter = dataflow.begin(); iter != dataflow.end(); iter++)
+  {
+    WRITE_SCODE(*iter, 12, "leftOfFirstChar");
+  }
+
+  dataflow = dps->rightOfLastCharDiff;
+  for(iter = dataflow.begin(); iter != dataflow.end(); iter++)
+  {
+    WRITE_SCODE(*iter, 12, "rightOfLastChar");
+  }
+
+  dataflow = dps->charBoxNumDiff;
+  for(iter = dataflow.begin(); iter != dataflow.end(); iter++)
+  {
+    WRITE_SCODE(*iter, 10, "charBoxNum");
+  }
+
+  dataflow = dps->intervalOfLeftOfCharsDiff;
+  for(iter = dataflow.begin(); iter != dataflow.end(); iter++)
+  {
+    WRITE_SCODE(*iter, 12, "intervalOfLeftOfChars");
+  }
+
+  dataflow = dps->biasOfLeftOfCharsDiff;
+  for(iter = dataflow.begin(); iter != dataflow.end(); iter++)
+  {
+    WRITE_SVLC(*iter, "biasOfLeftOfChars");
+  }
+
+  WRITE_CODE(dps->widthAlignSize, 8, "widthAlignSize");
+  WRITE_CODE(dps->heightAlignSize, 8, "heightAlignSize");
+  WRITE_CODE(dps->oddevenAlignFlag, 1, "oddevenAlignFlag");
+}
+#endif
+
 Void SEIWriter::xWriteByteAlign()
 {
   if( m_pcBitIf->getNumberOfWrittenBits() % 8 != 0)

@@ -862,6 +862,17 @@ private:
   UInt             m_forceDecodeBitDepth; // 0 = do not force the decoder's bit depth, other = force the decoder's bit depth to this value (best effort decoding)
 #endif
 
+#if 1 // TEXT_CODEC
+  Bool             m_backgroundLayerFlag;
+#endif
+#if TEXT_CODEC
+  Bool             m_textSCCFlag;
+  int*             m_backGroundColor = NULL;
+#endif
+#if IBC_MVD_ADAPT_RESOLUTION
+  UInt             m_mvdPrecHor;
+  UInt             m_mvdPrecVer;
+#endif
 public:
                          TComSPS();
   virtual                ~TComSPS();
@@ -993,6 +1004,23 @@ public:
   TComSPSRExt&           getSpsRangeExtension()                                                          { return m_spsRangeExtension;                                          }
   const TComSPSSCC&      getSpsScreenExtension() const                                                   { return m_spsScreenExtension;                                         }
   TComSPSSCC&            getSpsScreenExtension()                                                         { return m_spsScreenExtension;                                         }
+
+#if 1 // TEXT_CODEC
+  Void                   setLayerFlag(Bool b)                                                            { m_backgroundLayerFlag = b;                                           }
+  Bool                   getLayerFlag() const                                                            { return m_backgroundLayerFlag;                                        }
+#endif
+#if TEXT_CODEC
+  Void                   setTextSCCFlag(Bool b)                                                          { m_textSCCFlag = b;                                                   }
+  Bool                   getTextSCCFlag() const                                                          { return m_textSCCFlag;                                                }
+  Void                   setBgColor(int* bgColor)                                                        { m_backGroundColor = bgColor;                                         }
+  int*                   getBgColor() const                                                              { return m_backGroundColor;                                            }
+#endif
+#if IBC_MVD_ADAPT_RESOLUTION
+  Void                   setMvdPrecHor(UInt u)                                                           { m_mvdPrecHor = u;                                                    }
+  UInt                   getMvdPrecHor() const                                                           { return   m_mvdPrecHor;                                               }
+  Void                   setMvdPrecVer(UInt u)                                                           { m_mvdPrecVer = u;                                                    }
+  UInt                   getMvdPrecVer() const                                                           { return   m_mvdPrecVer;                                               }
+#endif
 };
 
 
@@ -1441,7 +1469,7 @@ public:
   Int                         getPPSId() const                                       { return m_iPPSId;                                              }
   Void                        setPicOutputFlag( Bool b   )                           { m_PicOutputFlag = b;                                          }
   Bool                        getPicOutputFlag() const                               { return m_PicOutputFlag;                                       }
-  Void                        setSaoEnabledFlag(ChannelType chType, Bool s)          {m_saoEnabledFlag[chType] =s;                                   }
+  Void                        setSaoEnabledFlag(ChannelType chType, Bool s)          { m_saoEnabledFlag[chType] = s;                                 }
   Bool                        getSaoEnabledFlag(ChannelType chType) const            { return m_saoEnabledFlag[chType];                              }
   Void                        setRPS( const TComReferencePictureSet *pcRPS )         { m_pRPS = pcRPS;                                               }
   const TComReferencePictureSet* getRPS()                                            { return m_pRPS;                                                }

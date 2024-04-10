@@ -1,0 +1,4 @@
+In-loop filter models: qpxx_sampleV2_epoch40.pt
+Post filter models: qpxx_postfilter_epoch40.pt
+
+In-loop filter models were trained by closing DB and SAO.

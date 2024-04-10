@@ -64,6 +64,10 @@ TComDataCU::TComDataCU()
   m_ChromaQpAdj        = NULL;
   m_pbMergeFlag        = NULL;
   m_puhMergeIndex      = NULL;
+#if PMVP_ON
+  m_puiMVPPosIdx       = NULL;
+  m_puiMVPPosNum       = NULL;
+#endif
   for(UInt i=0; i<MAX_NUM_CHANNEL_TYPE; i++)
   {
     m_puhIntraDir[i]     = NULL;
@@ -156,6 +160,10 @@ Void TComDataCU::create( ChromaFormat chromaFormatIDC, UInt uiNumPartition, UInt
 
     m_pbMergeFlag        = (Bool*  )xMalloc(Bool,   uiNumPartition);
     m_puhMergeIndex      = (UChar* )xMalloc(UChar,  uiNumPartition);
+#if PMVP_ON
+    m_puiMVPPosIdx       = (UInt*  )xMalloc(UInt,   uiNumPartition);
+    m_puiMVPPosNum       = (UInt*  )xMalloc(UInt,   uiNumPartition);
+#endif
 
     for (UInt ch=0; ch<MAX_NUM_CHANNEL_TYPE; ch++)
     {
@@ -302,6 +310,18 @@ Void TComDataCU::destroy()
       xFree(m_puhMergeIndex);
       m_puhMergeIndex  = NULL;
     }
+#if PMVP_ON
+    if ( m_puiMVPPosIdx )
+    {
+      xFree(m_puiMVPPosIdx);
+      m_puiMVPPosIdx = NULL;
+    }
+    if ( m_puiMVPPosNum )
+    {
+      xFree(m_puiMVPPosNum);
+      m_puiMVPPosNum = NULL;
+    }
+#endif
 
     for (UInt ch=0; ch<MAX_NUM_CHANNEL_TYPE; ch++)
     {
@@ -519,6 +539,10 @@ Void TComDataCU::initCtu( TComPic* pcPic, UInt ctuRsAddr )
   }
   memset( m_pbMergeFlag       , false,                    m_uiNumPartition * sizeof( *m_pbMergeFlag ) );
   memset( m_puhMergeIndex     , 0,                        m_uiNumPartition * sizeof( *m_puhMergeIndex ) );
+#if PMVP_ON
+  memset( m_puiMVPPosIdx      , 0,                        m_uiNumPartition * sizeof( *m_puiMVPPosIdx  ) );
+  memset( m_puiMVPPosNum      , 0,                        m_uiNumPartition * sizeof( *m_puiMVPPosNum  ) );
+#endif
   for (UInt ch=0; ch<MAX_NUM_CHANNEL_TYPE; ch++)
   {
     memset( m_puhIntraDir[ch] , ((ch==0) ? DC_IDX : 0),   m_uiNumPartition * sizeof( *(m_puhIntraDir[ch]) ) );
@@ -624,6 +648,10 @@ Void TComDataCU::initEstData( const UInt uiDepth, const Int qp, const Bool bTran
     m_ChromaQpAdj[ui]   = 0;
     m_pbMergeFlag[ui]   = 0;
     m_puhMergeIndex[ui] = 0;
+#if PMVP_ON
+    m_puiMVPPosIdx[ui]  = 0;
+    m_puiMVPPosNum[ui]  = 0;
+#endif
 
     for (UInt ch=0; ch<MAX_NUM_CHANNEL_TYPE; ch++)
     {
@@ -714,6 +742,10 @@ Void TComDataCU::initSubCU( TComDataCU* pcCU, UInt uiPartUnitIdx, UInt uiDepth, 
   memset( m_phQP,              qp,  sizeInChar );
   memset( m_pbMergeFlag,        0, iSizeInBool  );
   memset( m_puhMergeIndex,      0, iSizeInUchar );
+#if PMVP_ON
+  memset( m_puiMVPPosIdx,       0, m_uiNumPartition * sizeof( *m_puiMVPPosIdx  ) );
+  memset( m_puiMVPPosNum,       0, m_uiNumPartition * sizeof( *m_puiMVPPosNum  ) );
+#endif
   for (UInt ch=0; ch<MAX_NUM_CHANNEL_TYPE; ch++)
   {
     memset( m_puhIntraDir[ch],  ((ch==0) ? DC_IDX : 0), iSizeInUchar );
@@ -818,6 +850,10 @@ Void TComDataCU::copySubCU( TComDataCU* pcCU, UInt uiAbsPartIdx )
 
   m_pbMergeFlag         = pcCU->getMergeFlag()        + uiPart;
   m_puhMergeIndex       = pcCU->getMergeIndex()       + uiPart;
+#if PMVP_ON
+  m_puiMVPPosIdx        = pcCU->getMVPPosIdx()        + uiPart;
+  m_puiMVPPosNum        = pcCU->getMVPPosNum()        + uiPart;
+#endif
 
   for (UInt ch=0; ch<MAX_NUM_CHANNEL_TYPE; ch++)
   {
@@ -916,6 +952,10 @@ Void TComDataCU::copyInterPredInfoFrom    ( TComDataCU* pcCU, UInt uiAbsPartIdx,
 
   m_pbMergeFlag        = pcCU->getMergeFlag()             + uiAbsPartIdx;
   m_puhMergeIndex      = pcCU->getMergeIndex()            + uiAbsPartIdx;
+#if PMVP_ON
+  m_puiMVPPosIdx       = pcCU->getMVPPosIdx()             + uiAbsPartIdx;
+  m_puiMVPPosNum       = pcCU->getMVPPosNum()             + uiAbsPartIdx;
+#endif
 
   m_apiMVPIdx[eRefPicList] = pcCU->getMVPIdx(eRefPicList) + uiAbsPartIdx;
   m_apiMVPNum[eRefPicList] = pcCU->getMVPNum(eRefPicList) + uiAbsPartIdx;
@@ -964,6 +1004,10 @@ Void TComDataCU::copyPartFrom( TComDataCU* pcCU, UInt uiPartUnitIdx, UInt uiDept
   memcpy( m_CUTransquantBypass + uiOffset, pcCU->getCUTransquantBypass(), sizeof( *m_CUTransquantBypass ) * uiNumPartition );
   memcpy( m_pbMergeFlag         + uiOffset, pcCU->getMergeFlag(),         iSizeInBool  );
   memcpy( m_puhMergeIndex       + uiOffset, pcCU->getMergeIndex(),        iSizeInUchar );
+#if PMVP_ON
+  memcpy( m_puiMVPPosIdx        + uiOffset, pcCU->getMVPPosIdx(),         sizeof( *m_puiMVPPosIdx ) * uiNumPartition );
+  memcpy( m_puiMVPPosNum        + uiOffset, pcCU->getMVPPosNum(),         sizeof( *m_puiMVPPosNum ) * uiNumPartition );
+#endif
 
   for (UInt ch=0; ch<numValidChan; ch++)
   {
@@ -1056,6 +1100,10 @@ Void TComDataCU::copyToPic( UChar uhDepth )
   memcpy( pCtu->getCUTransquantBypass()+ m_absZIdxInCtu, m_CUTransquantBypass, sizeof( *m_CUTransquantBypass ) * m_uiNumPartition );
   memcpy( pCtu->getMergeFlag()         + m_absZIdxInCtu, m_pbMergeFlag,         iSizeInBool  );
   memcpy( pCtu->getMergeIndex()        + m_absZIdxInCtu, m_puhMergeIndex,       iSizeInUchar );
+#if PMVP_ON
+  memcpy( pCtu->getMVPPosIdx()         + m_absZIdxInCtu, m_puiMVPPosIdx,        sizeof( *m_puiMVPPosIdx ) * m_uiNumPartition );
+  memcpy( pCtu->getMVPPosNum()         + m_absZIdxInCtu, m_puiMVPPosNum,        sizeof( *m_puiMVPPosNum ) * m_uiNumPartition );
+#endif
   for (UInt ch=0; ch<numValidChan; ch++)
   {
     memcpy( pCtu->getIntraDir(ChannelType(ch)) + m_absZIdxInCtu, m_puhIntraDir[ch], iSizeInUchar);
@@ -1895,6 +1943,187 @@ Void TComDataCU::setSubPart( T uiParameter, T* puhBaseCtu, UInt uiCUAddr, UInt u
   }
 }
 
+#if PMVP_ON
+template <typename T>
+Void TComDataCU::setSubPartIter( T const & val, T *p, Int iPartAddr, UInt uiDepth, Int iPartIdx )
+{
+  SChar eCUMode = m_pePartSize[ iPartAddr ];
+  Int numElements = (m_pcPic->getNumPartitionsInCtu() >> (2 * uiDepth));
+  Int i;
+  p += iPartAddr;
+
+  switch( eCUMode )
+  {
+    case SIZE_2Nx2N:
+      for ( i = 0; i < numElements; i++ )
+      {
+        p[ i ] = val;
+      }
+      break;
+
+    case SIZE_2NxN:
+      numElements >>= 1;
+      for ( i = 0; i < numElements; i++ )
+      {
+        p[ i ] = val;
+      }
+      break;
+
+    case SIZE_Nx2N:
+      numElements >>= 2;
+      for ( i = 0; i < numElements; i++ )
+      {
+        p[ i                   ] = val;
+        p[ i + 2 * numElements ] = val;
+      }
+      break;
+
+    case SIZE_NxN:
+      numElements >>= 2;
+      for ( i = 0; i < numElements; i++)
+      {
+        p[ i ] = val;
+      }
+      break;
+    case SIZE_2NxnU:
+    {
+      Int iCurrPartNumQ = numElements>>2;
+      if( iPartIdx == 0 )
+      {
+        T *pT  = p;
+        T *pT2 = p + iCurrPartNumQ;
+        for (i = 0; i < (iCurrPartNumQ>>1); i++)
+        {
+          pT [i] = val;
+          pT2[i] = val;
+        }
+      }
+      else
+      {
+        T *pT  = p;
+        for (i = 0; i < (iCurrPartNumQ>>1); i++)
+        {
+          pT[i] = val;
+        }
+
+        pT = p + iCurrPartNumQ;
+        for (i = 0; i < ( (iCurrPartNumQ>>1) + (iCurrPartNumQ<<1) ); i++)
+        {
+          pT[i] = val;
+        }
+      }
+      break;
+    }
+  case SIZE_2NxnD:
+    {
+      Int iCurrPartNumQ = numElements>>2;
+      if( iPartIdx == 0 )
+      {
+        T *pT  = p;
+        for (i = 0; i < ( (iCurrPartNumQ>>1) + (iCurrPartNumQ<<1) ); i++)
+        {
+          pT[i] = val;
+        }
+        pT = p + ( numElements - iCurrPartNumQ );
+        for (i = 0; i < (iCurrPartNumQ>>1); i++)
+        {
+          pT[i] = val;
+        }
+      }
+      else
+      {
+        T *pT  = p;
+        T *pT2 = p + iCurrPartNumQ;
+        for (i = 0; i < (iCurrPartNumQ>>1); i++)
+        {
+          pT [i] = val;
+          pT2[i] = val;
+        }
+      }
+      break;
+    }
+  case SIZE_nLx2N:
+    {
+      Int iCurrPartNumQ = numElements>>2;
+      if( iPartIdx == 0 )
+      {
+        T *pT  = p;
+        T *pT2 = p + (iCurrPartNumQ<<1);
+        T *pT3 = p + (iCurrPartNumQ>>1);
+        T *pT4 = p + (iCurrPartNumQ<<1) + (iCurrPartNumQ>>1);
+
+        for (i = 0; i < (iCurrPartNumQ>>2); i++)
+        {
+          pT [i] = val;
+          pT2[i] = val;
+          pT3[i] = val;
+          pT4[i] = val;
+        }
+      }
+      else
+      {
+        T *pT  = p;
+        T *pT2 = p + (iCurrPartNumQ<<1);
+        for (i = 0; i < (iCurrPartNumQ>>2); i++)
+        {
+          pT [i] = val;
+          pT2[i] = val;
+        }
+
+        pT  = p + (iCurrPartNumQ>>1);
+        pT2 = p + (iCurrPartNumQ<<1) + (iCurrPartNumQ>>1);
+        for (i = 0; i < ( (iCurrPartNumQ>>2) + iCurrPartNumQ ); i++)
+        {
+          pT [i] = val;
+          pT2[i] = val;
+        }
+      }
+      break;
+    }
+  case SIZE_nRx2N:
+    {
+      Int iCurrPartNumQ = numElements>>2;
+      if( iPartIdx == 0 )
+      {
+        T *pT  = p;
+        T *pT2 = p + (iCurrPartNumQ<<1);
+        for (i = 0; i < ( (iCurrPartNumQ>>2) + iCurrPartNumQ ); i++)
+        {
+          pT [i] = val;
+          pT2[i] = val;
+        }
+
+        pT  = p + iCurrPartNumQ + (iCurrPartNumQ>>1);
+        pT2 = p + numElements - iCurrPartNumQ + (iCurrPartNumQ>>1);
+        for (i = 0; i < (iCurrPartNumQ>>2); i++)
+        {
+          pT [i] = val;
+          pT2[i] = val;
+        }
+      }
+      else
+      {
+        T *pT  = p;
+        T *pT2 = p + (iCurrPartNumQ>>1);
+        T *pT3 = p + (iCurrPartNumQ<<1);
+        T *pT4 = p + (iCurrPartNumQ<<1) + (iCurrPartNumQ>>1);
+        for (i = 0; i < (iCurrPartNumQ>>2); i++)
+        {
+          pT [i] = val;
+          pT2[i] = val;
+          pT3[i] = val;
+          pT4[i] = val;
+        }
+      }
+      break;
+    }
+    default:
+      assert(0);
+      break;
+  }
+}
+#endif
+
 Void TComDataCU::setMergeFlagSubParts ( Bool bMergeFlag, UInt uiAbsPartIdx, UInt uiPartIdx, UInt uiDepth )
 {
   setSubPart( bMergeFlag, m_pbMergeFlag, uiAbsPartIdx, uiDepth, uiPartIdx );
@@ -1920,6 +2149,17 @@ Void TComDataCU::setMVPNumSubParts( Int iMVPNum, RefPicList eRefPicList, UInt ui
   setSubPart<SChar>( iMVPNum, m_apiMVPNum[eRefPicList], uiAbsPartIdx, uiDepth, uiPartIdx );
 }
 
+#if PMVP_ON
+Void TComDataCU::setMVPPosIdxSubParts( UInt uiMVPPosIdx, UInt uiAbsPartIdx, UInt uiPartIdx, UInt uiDepth )
+{
+  setSubPartIter<UInt>( uiMVPPosIdx, m_puiMVPPosIdx, uiAbsPartIdx, uiDepth, uiPartIdx );
+}
+
+Void TComDataCU::setMVPPosNumSubParts( UInt uiMVPPosNum, UInt uiAbsPartIdx, UInt uiPartIdx, UInt uiDepth )
+{
+  setSubPartIter<UInt>( uiMVPPosNum, m_puiMVPPosNum, uiAbsPartIdx, uiDepth, uiPartIdx );
+}
+#endif
 
 Void TComDataCU::setTrIdxSubParts( UInt uiTrIdx, UInt uiAbsPartIdx, UInt uiDepth )
 {
@@ -2313,6 +2553,42 @@ Void TComDataCU::getInterMergeCandidates( UInt uiAbsPartIdx, UInt uiPUIdx, TComM
                        !( uiPUIdx == 1 && (cCurPS == SIZE_Nx2N || cCurPS == SIZE_nLx2N || cCurPS == SIZE_nRx2N) ) &&
                        pcCULeft->isInter( uiLeftPartIdx ) ;
 
+#if TEXT_CODEC_MERGE && TEXT_CODEC_MERGE_FLAG == 0
+  // background
+  Bool isAvailableBg = getSlice()->getSPS()->getBgColor();
+
+  // copy information from A1
+  if (isAvailableBg && isAvailableA1)
+  {
+    abCandIsInter[iCount] = true;
+    // get Inter Dir
+    puhInterDirNeighbours[iCount] = pcCULeft->getInterDir(uiLeftPartIdx);
+    // get Mv from Left
+    TComDataCU::getMvField(pcCULeft, uiLeftPartIdx, REF_PIC_LIST_0, pcMvFieldNeighbours[iCount << 1]);
+    if (getSlice()->isInterB())
+    {
+      TComDataCU::getMvField(pcCULeft, uiLeftPartIdx, REF_PIC_LIST_1, pcMvFieldNeighbours[(iCount << 1) + 1]);
+    }
+    if (mrgCandIdx == iCount)
+    {
+#if MCTS_ENC_CHECK
+      numSpatialMergeCandidates = iCount + 1;
+#endif
+      return;
+    }
+    iCount++;
+  }
+
+  // early termination
+  if (iCount == getSlice()->getMaxNumMergeCand())
+  {
+#if MCTS_ENC_CHECK
+    numSpatialMergeCandidates = iCount;
+#endif
+    return;
+  }
+#endif
+
   if ( isAvailableA1 )
   {
     abCandIsInter[iCount] = true;
@@ -2342,6 +2618,43 @@ Void TComDataCU::getInterMergeCandidates( UInt uiAbsPartIdx, UInt uiPUIdx, TComM
 #endif
     return;
   }
+
+#if TEXT_CODEC_MERGE && TEXT_CODEC_MERGE_FLAG == 1
+  // background
+  Bool isAvailableBg = getSlice()->getSPS()->getBgColor();
+
+  // copy information from A1
+  if (isAvailableBg && isAvailableA1)
+  {
+    abCandIsInter[iCount] = true;
+    // get Inter Dir
+    puhInterDirNeighbours[iCount] = pcCULeft->getInterDir(uiLeftPartIdx);
+    // get Mv from Left
+    TComDataCU::getMvField(pcCULeft, uiLeftPartIdx, REF_PIC_LIST_0, pcMvFieldNeighbours[iCount << 1]);
+    if (getSlice()->isInterB())
+    {
+      TComDataCU::getMvField(pcCULeft, uiLeftPartIdx, REF_PIC_LIST_1, pcMvFieldNeighbours[(iCount << 1) + 1]);
+    }
+    if (mrgCandIdx == iCount)
+    {
+#if MCTS_ENC_CHECK
+      numSpatialMergeCandidates = iCount + 1;
+#endif
+      return;
+    }
+    iCount++;
+  }
+
+  // early termination
+  if (iCount == getSlice()->getMaxNumMergeCand())
+  {
+#if MCTS_ENC_CHECK
+    numSpatialMergeCandidates = iCount;
+#endif
+    return;
+  }
+#endif
+
   // above
   UInt uiAbovePartIdx = 0;
   const TComDataCU *pcCUAbove = getPUAbove( uiAbovePartIdx, uiPartIdxRT );
@@ -2379,6 +2692,42 @@ Void TComDataCU::getInterMergeCandidates( UInt uiAbsPartIdx, UInt uiPUIdx, TComM
 #endif
     return;
   }
+
+#if TEXT_CODEC_MERGE && TEXT_CODEC_MERGE_FLAG == 2
+  // background
+  Bool isAvailableBg = getSlice()->getSPS()->getBgColor();
+
+  // copy information from A1
+  if (isAvailableBg && isAvailableA1)
+  {
+    abCandIsInter[iCount] = true;
+    // get Inter Dir
+    puhInterDirNeighbours[iCount] = pcCULeft->getInterDir(uiLeftPartIdx);
+    // get Mv from Left
+    TComDataCU::getMvField(pcCULeft, uiLeftPartIdx, REF_PIC_LIST_0, pcMvFieldNeighbours[iCount << 1]);
+    if (getSlice()->isInterB())
+    {
+      TComDataCU::getMvField(pcCULeft, uiLeftPartIdx, REF_PIC_LIST_1, pcMvFieldNeighbours[(iCount << 1) + 1]);
+    }
+    if (mrgCandIdx == iCount)
+    {
+#if MCTS_ENC_CHECK
+      numSpatialMergeCandidates = iCount + 1;
+#endif
+      return;
+    }
+    iCount++;
+  }
+
+  // early termination
+  if (iCount == getSlice()->getMaxNumMergeCand())
+  {
+#if MCTS_ENC_CHECK
+    numSpatialMergeCandidates = iCount;
+#endif
+    return;
+  }
+#endif
 
   // above right
   UInt uiAboveRightPartIdx = 0;
@@ -2497,7 +2846,48 @@ Void TComDataCU::getInterMergeCandidates( UInt uiAbsPartIdx, UInt uiPUIdx, TComM
 #if MCTS_ENC_CHECK
   numSpatialMergeCandidates = iCount;
 #endif
+
+#if TEXT_CODEC_MERGE && TEXT_CODEC_MERGE_FLAG == 5
+  // background
+  Bool isAvailableBg = getSlice()->getSPS()->getBgColor();
+
+  // copy information from A1
+  if (isAvailableBg && isAvailableA1)
+  {
+    abCandIsInter[iCount] = true;
+    // get Inter Dir
+    puhInterDirNeighbours[iCount] = pcCULeft->getInterDir(uiLeftPartIdx);
+    // get Mv from Left
+    TComDataCU::getMvField(pcCULeft, uiLeftPartIdx, REF_PIC_LIST_0, pcMvFieldNeighbours[iCount << 1]);
+    if (getSlice()->isInterB())
+    {
+      TComDataCU::getMvField(pcCULeft, uiLeftPartIdx, REF_PIC_LIST_1, pcMvFieldNeighbours[(iCount << 1) + 1]);
+    }
+    if (mrgCandIdx == iCount)
+    {
+#if MCTS_ENC_CHECK
+      numSpatialMergeCandidates = iCount + 1;
+#endif
+      return;
+    }
+    iCount++;
+  }
+
+  // early termination
+  if (iCount == getSlice()->getMaxNumMergeCand())
+  {
+#if MCTS_ENC_CHECK
+    numSpatialMergeCandidates = iCount;
+#endif
+    return;
+  }
+#endif
+
+#if TEXT_CODEC_MERGE
+  if ( getSlice()->getEnableTMVPFlag() && iCount != TEXT_CODEC_MERGE_FLAG)
+#else
   if ( getSlice()->getEnableTMVPFlag() )
+#endif
   {
     //>> MTK colocated-RightBottom
     UInt uiPartIdxRB;
@@ -3503,6 +3893,45 @@ Bool TComDataCU::isIntraBC(UInt absPartIdx) const
 
   return isNeighborIntraBC;
 }
+
+#if PMVP_ON
+// getMVPPosNumByCoord & setMVPPosNumByCoord
+// build mapping: position predictor number <-> coordinate
+Int TComDataCU::getMVPPosNumByCoord(Int posX, Int posY)
+{
+  UInt ctuStride = m_pcPic->getFrameWidthInCtus();
+  // 64x64 ctu
+  UInt ctuX = posX >> 6, ctuY = posY >> 6;
+  // 4x4 unit, total 16x16 units in ctu
+  UInt unitX = (posX - (ctuX << 6)) >> 2;
+  UInt unitY = (posY - (ctuY << 6)) >> 2;
+  UInt rsCtuIdx = ctuY * ctuStride + ctuX;
+  UInt zsUnitIdx = g_auiRasterToZscan[(unitY << 4) + unitX];
+  Int posNum = 0;
+  if (rsCtuIdx <= m_ctuRsAddr )
+    posNum = m_pcPic->getCtu( rsCtuIdx )->getMVPPosNum( zsUnitIdx );
+
+  return posNum; // The number is +1 on purpose when call setMVPPosIdx
+}
+
+Bool TComDataCU::setMVPPosNumByCoord(Int num, Int posX, Int posY)
+{
+  UInt ctuStride = m_pcPic->getFrameWidthInCtus();
+  UInt ctuX = posX >> 6, ctuY = posY >> 6;
+  UInt unitX = (posX - (ctuX << 6)) >> 2;
+  UInt unitY = (posY - (ctuY << 6)) >> 2;
+  UInt rsCtuIdx = ctuY * ctuStride + ctuX;
+  UInt zsUnitIdx = g_auiRasterToZscan [(unitY<<4) + unitX];
+  Int posNum = 0;
+  if (rsCtuIdx <= m_ctuRsAddr )
+    posNum = m_pcPic->getCtu( rsCtuIdx )->getMVPPosNum( zsUnitIdx );
+  // set predictor number if posNum is initial value (0)
+  if (posNum > 0)
+    return false;
+  m_pcPic->getCtu( rsCtuIdx )->m_puiMVPPosNum[zsUnitIdx] = num;
+  return true;
+}
+#endif
 
 Void TComDataCU::getIntraBCMVPsEncOnly(UInt absPartIdx, TComMv* MvPred, Int& nbPred, Int iPartIdx)
 {

@@ -51,6 +51,9 @@
 #include "TAppEncHelper360/TExt360AppEncTop.h"
 #endif
 
+#if TEXT_CODEC
+using namespace cv;
+#endif
 using namespace std;
 
 //! \ingroup TAppEncoder
@@ -71,7 +74,11 @@ TAppEncTop::~TAppEncTop()
 {
 }
 
+#if TEXT_CODEC
+Void TAppEncTop::xInitLibCfg(TEncTop& m_cTEncTop)
+#else
 Void TAppEncTop::xInitLibCfg()
+#endif
 {
   TComVPS vps;
 
@@ -559,6 +566,10 @@ Void TAppEncTop::xInitLibCfg()
   m_cTEncTop.setPaletteMaxPredSize                                ( m_paletteMaxPredSize );
   m_cTEncTop.setPalettePredInSPSEnabled                           ( m_palettePredInSPSEnabled );
   m_cTEncTop.setPalettePredInPPSEnabled                           ( m_palettePredInPPSEnabled );
+#if TEXT_CODEC
+  m_cTEncTop.setTextSCCDisplaceAlignSizeinWidth                   (m_textSCCDisplaceAlignSizeinWidth);
+  m_cTEncTop.setTextSCCDisplaceAlignSizeinHeight                  (m_textSCCDisplaceAlignSizeinHeight);
+#endif
 }
 
 Void TAppEncTop::xCreateLib()
@@ -591,6 +602,54 @@ Void TAppEncTop::xInitLib(Bool isFieldCoding)
   m_cTEncTop.init(isFieldCoding);
 }
 
+#if TEXT_CODEC
+Void TAppEncTop::TextSCC_InitLibCfg(Bool isFieldCoding)
+{
+  xInitLibCfg(m_cTEncTopTextLayer);
+  m_cTEncTopTextLayer.create();            // function in xCreateLib();
+  m_cTEncTopTextLayer.init(isFieldCoding); // function in InitLib();
+}
+
+Mat  TAppEncTop::YUV2Mat(TComPicYuv* pcPicYuvOrg, const InputColourSpaceConversion ipCSC,
+                        Int confLeft, Int confRight, Int confTop, Int confBottom,
+                        ChromaFormat format, const Bool bClipToRec709)
+{
+  vector<Mat> yuv_planes;
+  Mat img;
+  pcPicYuvOrg->dumpYuvToMat444(yuv_planes, m_internalBitDepth);
+  merge(yuv_planes, img);
+
+  return img;
+}
+
+Void TAppEncTop::xSetGOPEncoder_bufOrg(TEncGOP* m_cGOPEncoder, TComPicYuv* pcPicYuvOrg)
+{
+  TComPicYuv* m_pcOrgBuffer = new TComPicYuv;
+  m_pcOrgBuffer->create(m_iSourceWidth, m_iSourceHeight, m_chromaFormatIDC, m_uiMaxCUWidth, m_uiMaxCUHeight, m_uiMaxTotalCUDepth, true);
+  pcPicYuvOrg->copyToPic(m_pcOrgBuffer);
+  m_cGOPEncoder->setOrgBuffer(m_pcOrgBuffer);
+}
+
+Void TAppEncTop::xSetGOPEncoder(TEncGOP* m_cGOPEncoder, UInt uibitsTextLayer, DisplacementParameterSet* dps)
+{
+  TComPicYuv* pcPicYuvRec = *(--m_cListPicYuvRec.end());
+  m_cGOPEncoder->setTextLayerRec(pcPicYuvRec);
+  m_cGOPEncoder->setTextLayerBit(uibitsTextLayer);
+  m_cGOPEncoder->setTextSCCParameterSet(dps);
+}
+
+Void TAppEncTop::xDestroyTextSCCclass(DisplacementParameterSet* dps, TextOptimization* textOpt)
+{
+  if (dps != NULL)
+  {
+    delete dps;
+    dps = NULL;
+    delete textOpt;
+    textOpt = NULL;
+  }
+}
+#endif
+
 // ====================================================================================================================
 // Public member functions
 // ====================================================================================================================
@@ -616,7 +675,11 @@ Void TAppEncTop::encode()
   TComPicYuv*       pcPicYuvRec = NULL;
 
   // initialize internal class & member variables
+#if TEXT_CODEC
+  xInitLibCfg(m_cTEncTop);
+#else
   xInitLibCfg();
+#endif
   xCreateLib();
   xInitLib(m_isField);
 
@@ -695,7 +758,118 @@ Void TAppEncTop::encode()
       m_cTEncTop.setFramesToBeEncoded(m_iFrameRcvd);
     }
 
+#if TEXT_CODEC && SELECT_TEXT_CODEC != 0
+    TextOptimization* textOpt = NULL;
+    TComPicYuv* pcPicYuvOrgTextLayer = NULL;
+    TComPicYuv  cPicYuvTrueOrgText;
+    DisplacementParameterSet* dps = NULL;
+    TEncGOP* m_cGOPEncoder = m_cTEncTop.getGOPEncoder();
+
+    if (m_isField == 0 && m_iFrameRcvd == 1)
+    {
+      // copy & create buffer
+      xSetGOPEncoder_bufOrg(m_cGOPEncoder, pcPicYuvOrg);
+      pcPicYuvOrgTextLayer = new TComPicYuv;
+
+      // write Org YUV buffer into cv::Mat for preprocess
+      Mat yuv = YUV2Mat(pcPicYuvOrg, ipCSC, m_confWinLeft, m_confWinRight, m_confWinTop, m_confWinBottom,
+        NUM_CHROMA_FORMAT, m_bClipOutputVideoToRec709Range);
+
+      // preprocess: layer original frame into text & background layers
+      textOpt = new TextOptimization;
+      dps = new DisplacementParameterSet;
+      dps->widthAlignSize = m_textSCCDisplaceAlignSizeinWidth;
+      dps->heightAlignSize = m_textSCCDisplaceAlignSizeinHeight;
+      textOpt->textOptimizationPreprocess(yuv, dps, pcPicYuvOrg, pcPicYuvOrgTextLayer, &cPicYuvTrueOrg, &cPicYuvTrueOrgText,
+        m_chromaFormatIDC, m_uiMaxCUWidth, m_uiMaxCUHeight, m_uiMaxTotalCUDepth, true);
+
+      // set m_textSCCFlag by textSccCloseFlag
+#if SELECT_TEXT_CODEC == 1
+      if (textOpt->textSccCloseFlag == false)
+        m_textSCCFlag = true;
+      else
+        m_textSCCFlag = false;
+#elif SELECT_TEXT_CODEC == 2
+      m_textSCCFlag = true;
+#endif
+    }
+
     // call encoding function for one frame
+    if (m_textSCCFlag)
+    {
+      /* text */
+      // set layer flag
+      m_backgroundLayerFlag = false;
+
+      // store original (background) resolution
+      textOpt->yuvBgWdt = m_iSourceWidth;
+      textOpt->yuvBgHgt = m_iSourceHeight;
+      // reset resolution by text resolution
+      m_iSourceWidth = textOpt->yuvTextWdt;
+      m_iSourceHeight = textOpt->yuvTextHgt;
+
+      // initialize internal class & member variables for m_cTEncTopTextLayer
+      TextSCC_InitLibCfg(m_isField);
+      m_cTEncTopTextLayer.initTextSCC(m_backgroundLayerFlag, m_textSCCFlag, dps->backGroundColor);
+#if 0 // IBC_MVD_ADAPT_RESOLUTION
+      m_cTEncTopTextLayer.initIBCAdaptMvd(m_textSCCDisplaceAlignSizeinWidth, m_textSCCDisplaceAlignSizeinHeight);
+#endif
+      m_cTEncTopTextLayer.setTextSCCParameterSet(dps);
+
+      // create buffer
+      TComPicYuv* pcPicYuvRec_text = NULL;
+
+      // get buffers
+      m_cListPicYuvRec.clear();
+      xGetBuffer(pcPicYuvRec_text);
+
+      // encode
+      cout << "Text Layer:\n";
+      m_cTEncTopTextLayer.encode(bEos, flush ? 0 : pcPicYuvOrgTextLayer, flush ? 0 : &cPicYuvTrueOrgText, ipCSC, snrCSC, m_cListPicYuvRec, outputAccessUnits, iNumEncoded);
+
+      // xWriteOutput
+      xWriteOutput(bitstreamFile, iNumEncoded, outputAccessUnits);
+      outputAccessUnits.clear();
+      iNumEncoded--;
+
+      // set GOPEncoder: buffer & dps & bit
+      xSetGOPEncoder(m_cGOPEncoder, m_essentialBytes * 8, dps);
+
+      // delete buffers & classes
+      m_cTEncTopTextLayer.deletePicBuffer();
+      cPicYuvTrueOrgText.destroy();
+      m_cTEncTopTextLayer.destroy(); // function in xDestroyLib();
+
+
+      /* background */
+      // set layer flag
+      m_backgroundLayerFlag = true;
+
+      // reset resolution
+      m_iSourceWidth = textOpt->yuvBgWdt;
+      m_iSourceHeight = textOpt->yuvBgHgt;
+
+      // initialize variables
+      m_cTEncTop.initTextSCC(m_backgroundLayerFlag, m_textSCCFlag, dps->backGroundColor);
+#if 0 // IBC_MVD_ADAPT_RESOLUTION
+      m_cTEncTop.initIBCAdaptMvd(m_textSCCDisplaceAlignSizeinWidth, m_textSCCDisplaceAlignSizeinHeight);
+#endif
+
+      // get buffers
+      m_cListPicYuvRec.clear();
+      xGetBuffer(pcPicYuvRec);
+
+      // encode
+      cout << "Text(includes SEI) + Background:\n";
+      m_cTEncTop.encode(bEos, flush ? 0 : pcPicYuvOrg, flush ? 0 : &cPicYuvTrueOrg, ipCSC, snrCSC, m_cListPicYuvRec, outputAccessUnits, iNumEncoded);
+
+      // reset flag
+      m_textSCCFlag = false;
+      m_cTEncTop.initTextSCC(m_backgroundLayerFlag, m_textSCCFlag, dps->backGroundColor);
+    }
+    else
+    {
+#endif
     if ( m_isField )
     {
       m_cTEncTop.encode( bEos, flush ? 0 : pcPicYuvOrg, flush ? 0 : &cPicYuvTrueOrg, ipCSC, snrCSC, m_cListPicYuvRec, outputAccessUnits, iNumEncoded, m_isTopFieldFirst );
@@ -704,6 +878,17 @@ Void TAppEncTop::encode()
     {
       m_cTEncTop.encode( bEos, flush ? 0 : pcPicYuvOrg, flush ? 0 : &cPicYuvTrueOrg, ipCSC, snrCSC, m_cListPicYuvRec, outputAccessUnits, iNumEncoded );
     }
+#if TEXT_CODEC && SELECT_TEXT_CODEC != 0
+    }
+    xDestroyTextSCCclass(dps, textOpt);
+    if (pcPicYuvOrgTextLayer != NULL)
+    {
+      // delete original YUV buffer of text layer
+      pcPicYuvOrgTextLayer->destroy();
+      delete pcPicYuvOrgTextLayer;
+      pcPicYuvOrgTextLayer = NULL;
+    }
+#endif
 
     // write bistream to file if necessary
     if ( iNumEncoded > 0 )
@@ -839,6 +1024,10 @@ Void TAppEncTop::xWriteOutput(std::ostream& bitstreamFile, Int iNumEncoded, cons
     for ( i = 0; i < iNumEncoded; i++ )
     {
       TComPicYuv*  pcPicYuvRec  = *(iterPicYuvRec++);
+#if TEXT_CODEC
+      // (1) or (m_backgroundLayerFlag)
+      if (m_backgroundLayerFlag)
+#endif
       if (!m_reconFileName.empty())
       {
         m_cTVideoIOYuvReconFile.write( pcPicYuvRec, ipCSC, m_confWinLeft, m_confWinRight, m_confWinTop, m_confWinBottom,
@@ -888,6 +1077,14 @@ Void TAppEncTop::rateStatsAccum(const AccessUnit& au, const std::vector<UInt>& a
     default:
       break;
     }
+
+#if TEXT_CODEC
+    if ((*it_au)->m_nalUnitType == NAL_UNIT_SUFFIX_SEI && m_textSCCFlag && first_NAL_UNIT_SUFFIX_SEI)
+    {
+      m_essentialBytes += *it_stats;
+      first_NAL_UNIT_SUFFIX_SEI = false;
+    }
+#endif
 
     m_totalBytes += *it_stats;
   }

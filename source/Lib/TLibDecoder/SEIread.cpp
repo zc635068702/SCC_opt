@@ -397,6 +397,12 @@ Void SEIReader::xReadSEIPayloadData(Int const payloadType, Int const payloadSize
       xParseSEIRegionalNesting((SEIRegionalNesting&) *sei, payloadSize, sps, pDecodedMessageOutputStream);
       break;
 #endif
+#if TEXT_CODEC
+    case SEI::TEXT_SCC_INFO:
+      sei = new SEITextSCCInfo;
+      xParseSEITextSCCInfo((SEITextSCCInfo&)*sei, payloadSize, pDecodedMessageOutputStream);
+      break;
+#endif
     default:
       for (UInt i = 0; i < payloadSize; i++)
       {
@@ -2094,5 +2100,89 @@ Void SEIReader::xParseSEIRegionalNesting( SEIRegionalNesting& sei, UInt payloadS
 }
 #endif
 
+#if TEXT_CODEC
+Void SEIReader::xParseSEITextSCCInfo(SEITextSCCInfo& sei, UInt payloadSize, std::ostream *pDecodedMessageOutputStream)
+{
+  UInt code;
+  Int scode;
+  output_sei_message_header(sei, pDecodedMessageOutputStream, payloadSize);
+
+  int rowIdx, boxIdx;
+  vector<int> dataflow;
+
+  DisplacementParameterSet *dps = new DisplacementParameterSet;
+
+  // rowNumber
+  sei_read_code(pDecodedMessageOutputStream, 8, code, "rowNumber");            dps->rowNumber = code;
+
+  // charBoxHeight
+  dataflow.clear();
+  for (rowIdx = 0; rowIdx < dps->rowNumber; rowIdx++)
+  {
+    sei_read_svlc(pDecodedMessageOutputStream, scode, "charBoxHeight");        dataflow.push_back(scode);
+  }
+  dps->charBoxHeight = sei.recoverDataFromDiff(dataflow);
+
+  // topOfFirstChar
+  dataflow.clear();
+  for (rowIdx = 0; rowIdx < dps->rowNumber; rowIdx++)
+  {
+    sei_read_scode(pDecodedMessageOutputStream, 12, scode, "topOfFirstChar");  dataflow.push_back(scode);
+  }
+  dps->topOfFirstChar = sei.recoverDataFromDiff(dataflow);
+
+  // leftOfFirstChar
+  dataflow.clear();
+  for (rowIdx = 0; rowIdx < dps->rowNumber; rowIdx++)
+  {
+    sei_read_scode(pDecodedMessageOutputStream, 12, scode, "leftOfFirstChar"); dataflow.push_back(scode);
+  }
+  dps->leftOfFirstChar = sei.recoverDataFromDiff(dataflow);
+
+  // rightOfLastChar
+  dataflow.clear();
+  for (rowIdx = 0; rowIdx < dps->rowNumber; rowIdx++)
+  {
+    sei_read_scode(pDecodedMessageOutputStream, 12, scode, "rightOfLastChar"); dataflow.push_back(scode);
+  }
+  dps->rightOfLastChar = sei.recoverDataFromDiff(dataflow);
+
+  // charBoxNum
+  dataflow.clear();
+  for (rowIdx = 0; rowIdx < dps->rowNumber; rowIdx++)
+  {
+    sei_read_scode(pDecodedMessageOutputStream, 10, scode, "charBoxNum");       dataflow.push_back(scode);
+  }
+  dps->charBoxNum = sei.recoverDataFromDiff(dataflow);
+
+  // intervalOfLeftOfChars
+  dataflow.clear();
+  for (rowIdx = 0; rowIdx < dps->rowNumber; rowIdx++)
+  {
+    sei_read_scode(pDecodedMessageOutputStream, 12, scode, "intervalOfLeftOfChars");dataflow.push_back(scode);
+  }
+  dps->intervalOfLeftOfChars = sei.recoverDataFromDiff(dataflow);
+
+  // biasOfLeftOfChars
+  int box_number = 0;
+  for (rowIdx = 0; rowIdx < dps->rowNumber; rowIdx++)
+  {
+    box_number += dps->charBoxNum[rowIdx];
+  }
+  for (boxIdx = 0; boxIdx < box_number; boxIdx++)
+  {
+    sei_read_svlc(pDecodedMessageOutputStream, scode, "biasOfLeftOfChars");    dps->biasOfLeftOfChars.push_back(scode);
+  }
+
+  // widthAlignSize
+  sei_read_code(pDecodedMessageOutputStream, 8, code, "widthAlignSize");       dps->widthAlignSize = code;
+  // heightAlignSize
+  sei_read_code(pDecodedMessageOutputStream, 8, code, "heightAlignSize");      dps->heightAlignSize = code;
+  // oddevenAlignFlag
+  sei_read_code(pDecodedMessageOutputStream, 1, code, "oddevenAlignFlag");     dps->oddevenAlignFlag = code;
+
+  sei.setTextSCCParameterSet(dps);
+}
+#endif
 
 //! \}

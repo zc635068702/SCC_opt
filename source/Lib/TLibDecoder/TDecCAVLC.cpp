@@ -44,6 +44,10 @@
 #endif
 #include "TDecConformance.h"
 
+#if K0149_BLOCK_STATISTICS
+#include "TLibCommon/dtrace_blockstatistics.h"
+#endif
+
 //! \ingroup TLibDecoder
 //! \{
 
@@ -671,6 +675,15 @@ Void TDecCavlc::parseHrdParameters(TComHRD *hrd, Bool commonInfPresentFlag, UInt
   }
 }
 
+#if TEXT_CODEC
+Void TDecCavlc::parseSPSHgtWdt(TComSPS* pcSPS)
+{
+  UInt  uiCode;
+  READ_CODE_CHK (16,    uiCode, "pic_width_in_luma_samples", 1, std::numeric_limits<UInt>::max()  );  pcSPS->setPicWidthInLumaSamples ( uiCode    );
+  READ_CODE_CHK (16,    uiCode, "pic_height_in_luma_samples", 1, std::numeric_limits<UInt>::max() );  pcSPS->setPicHeightInLumaSamples( uiCode    );
+}
+#endif
+
 Void TDecCavlc::parseSPS(TComSPS* pcSPS)
 {
 #if ENC_DEC_TRACE
@@ -706,6 +719,20 @@ Void TDecCavlc::parseSPS(TComSPS* pcSPS)
     READ_FLAG_CHK(     uiCode, "separate_colour_plane_flag", 0, 0);
     assert(uiCode == 0);
   }
+
+#if TEXT_CODEC
+  READ_FLAG(uiCode, "background_layer_flag");                           pcSPS->setLayerFlag( uiCode );
+#if TEXT_CODEC_MERGE
+  if (!pcSPS->getLayerFlag())
+  {
+    int* backGroundColor = new int[3];
+    READ_UVLC_CHK (    uiCode, "background_color1", 0, 1023  );  backGroundColor[0] = uiCode;
+    READ_UVLC_CHK (    uiCode, "background_color2", 0, 1023  );  backGroundColor[1] = uiCode;
+    READ_UVLC_CHK (    uiCode, "background_color3", 0, 1023  );  backGroundColor[2] = uiCode;
+    pcSPS->setBgColor( backGroundColor );
+  }
+#endif
+#endif
 
   // pic_width_in_luma_samples and pic_height_in_luma_samples needs conformance checking - multiples of MinCbSizeY
   READ_UVLC_CHK (    uiCode, "pic_width_in_luma_samples", 1, std::numeric_limits<UInt>::max()  );  pcSPS->setPicWidthInLumaSamples ( uiCode    );
@@ -831,6 +858,11 @@ Void TDecCavlc::parseSPS(TComSPS* pcSPS)
   }
   READ_FLAG( uiCode, "amp_enabled_flag" );                          pcSPS->setUseAMP( uiCode );
   READ_FLAG( uiCode, "sample_adaptive_offset_enabled_flag" );       pcSPS->setUseSAO ( uiCode ? true : false );
+
+#if IBC_MVD_ADAPT_RESOLUTION
+  READ_UVLC_CHK( uiCode, "mvd_prec_hor", 0, 6 );                    pcSPS->setMvdPrecHor(uiCode);
+  READ_UVLC_CHK( uiCode, "mvd_prec_ver", 0, 6 );                    pcSPS->setMvdPrecVer(uiCode);
+#endif
 
   READ_FLAG( uiCode, "pcm_enabled_flag" ); pcSPS->setUsePCM( uiCode ? true : false );
   if( pcSPS->getUsePCM() )
@@ -1059,6 +1091,28 @@ Void TDecCavlc::parseSPS(TComSPS* pcSPS)
       }
     }
   }
+
+#if PRINT_SPS_INFO
+  printf("Sequence size: %d x %d\n", pcSPS->getPicWidthInLumaSamples(), pcSPS->getPicHeightInLumaSamples());
+  printf("BitDepth: %d\n", pcSPS->getBitDepth(CHANNEL_TYPE_LUMA));
+#endif
+
+#if K0149_BLOCK_STATISTICS // header
+  g_bStatisticJustDoIt = g_bStatisticEncDecTraceEnable;
+  DTRACE_HEADER( "# VTMBMS Block Statistics\n" );
+  // sequence info
+  DTRACE_HEADER( "# Sequence size: [%dx %d]\n", pcSPS->getPicWidthInLumaSamples(), pcSPS->getPicHeightInLumaSamples() );
+  // list statistics
+  for ( auto i = static_cast<int>(BlockStatistic::PredMode); i < static_cast<int>(BlockStatistic::NumBlockStatistics); i++ )
+  {
+    BlockStatistic statistic = BlockStatistic( i );
+    std::string statitic_name = GetBlockStatisticName( statistic );
+    std::string statitic_type = GetBlockStatisticTypeString( statistic );
+    std::string statitic_type_specific_info = GetBlockStatisticTypeSpecificInfo( statistic );
+    DTRACE_HEADER( "# Block Statistic Type: %s; %s; %s\n", statitic_name.c_str(), statitic_type.c_str(), statitic_type_specific_info.c_str() );
+  }
+  g_bStatisticJustDoIt = g_bStatisticEncDecTraceDisable;
+#endif
 
   xReadRbspTrailingBits();
 }

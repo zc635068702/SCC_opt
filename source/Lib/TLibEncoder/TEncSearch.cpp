@@ -377,6 +377,10 @@ Void TEncSearch::init(TEncCfg*       pcEncCfg,
     }
   }
 
+#if IBC_ME_FROM_VTM
+  m_lastCandCost = std::numeric_limits<Distortion>::max();
+#endif
+
   // initialize motion cost
   for( Int iNum = 0; iNum < AMVP_MAX_NUM_CANDS+1; iNum++)
   {
@@ -9625,6 +9629,185 @@ Bool TEncSearch::isBlockVectorValid( Int xPos, Int yPos, Int width, Int height, 
   return true;
 }
 
+#if PMVP_ON
+UInt TEncSearch::xGetExpGolombNumberOfBits( Int iVal )
+{
+  assert(iVal != std::numeric_limits<Int>::min());
+  UInt uiLength = 1;
+  UInt uiTemp   = ( iVal <= 0) ? (UInt(-iVal)<<1)+1: UInt(iVal<<1);
+
+  while ( uiTemp > 256)
+  {
+    uiTemp >>= 8;
+    uiLength += 8;
+  }
+  uiLength += g_uhPaletteTBC[uiTemp];
+  uiLength = 2 * uiLength - 1;
+  return uiLength;
+}
+
+Void TEncSearch::getPmvpPredList(Int posX, Int posY, Int& idx, Int& bits)
+{
+  Int posMvdBitsTemp = 0;
+  Int posMvdBitsBest = MAX_INT;
+  Int posIdxBest = -1;
+  // compare mvd bit
+  for ( Int posIdxTemp=0; posIdxTemp<m_uiMVPPosNum; posIdxTemp++)
+  {
+    posMvdBitsTemp = xGetExpGolombNumberOfBits(posX - m_acMVPPosPred[posIdxTemp].getHor()) +
+                      xGetExpGolombNumberOfBits(posY - m_acMVPPosPred[posIdxTemp].getVer());
+    if (posMvdBitsTemp < posMvdBitsBest)
+    {
+      posMvdBitsBest = posMvdBitsTemp;
+      posIdxBest = posIdxTemp;
+    }
+  }
+  idx = posIdxBest;
+  bits = posMvdBitsBest;
+}
+
+Void TEncSearch::getPmvpPredLUT(TComDataCU* pcCU, Int iPosX, Int iPosY, Int& idx, Int& bits)
+{
+  static const char ux[145] = {0, 0, -4, 4, 0, 0, 0, -12, -8, 8, 12, 0, 0, 0, 0, 0, 0, -28, -24, -20, -16, 16, 20, 24, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -4, 4, -60, -56, -52, -48, -44, -40, -36, -32, 32, 36, 40, 44, 48, 52, 56, 60, -4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -4, 4, -4, 4, -12, -8, 8, 12, -124, -120, -116, -112, -108, -104, -100, -96, -92, -88, -84, -80, -76, -72, -68, -64, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124, -12, -8, 8, 12, -4, 4, -4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  static const char uy[145] = {0, -4, 0, 0, 4, -12, -8, 0, 0, 0, 0, 8, 12, -28, -24, -20, -16, 0, 0, 0, 0, 0, 0, 0, 0, 16, 20, 24, 28, -60, -56, -52, -48, -44, -40, -36, -32, -4, -4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 32, 36, 40, 44, 48, 52, 56, 60, -124, -120, -116, -112, -108, -104, -100, -96, -92, -88, -84, -80, -76, -72, -68, -64, -12, -12, -8, -8, -4, -4, -4, -4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 12, 12, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124};
+
+  Int picWidth  = pcCU->getSlice()->getSPS()->getPicWidthInLumaSamples();
+  Int picHeight = pcCU->getSlice()->getSPS()->getPicHeightInLumaSamples();
+
+  Int posMvdBitsTemp = 0;
+  Int posMvdBitsBest = MAX_INT;
+  Int posIdxBest = -1, posIdxTemp = -1;
+  Int posX, posY;
+
+  for (Int k=0; k<PMVP_AREA_SAERCH_LUT; k++)
+  {
+    posX = iPosX + ux[k];
+    posY = iPosY + uy[k];
+    if ( 0 <= posX && posX <= picWidth && 0 <= posY && posY <= picHeight )
+    {
+      // find its position index by coordinate
+      // posIdx: position predictor number - 1
+      posIdxTemp = pcCU->getMVPPosNumByCoord(posX, posY) - 1;
+      if (posIdxTemp >= 0 && posIdxTemp< m_uiMVPPosNum)
+      {
+        posMvdBitsTemp = xGetExpGolombNumberOfBits(iPosX - m_acMVPPosPred[posIdxTemp].getHor()) +
+                        xGetExpGolombNumberOfBits(iPosY - m_acMVPPosPred[posIdxTemp].getVer());
+
+        if (posMvdBitsTemp < posMvdBitsBest)
+        {
+          posMvdBitsBest = posMvdBitsTemp;
+          posIdxBest = posIdxTemp;
+        }
+      }
+    }
+  }
+  idx = posIdxBest;
+  bits = posMvdBitsBest;
+  return; // the find one is best one
+}
+
+Void TEncSearch::getPmvpPredArea(TComDataCU* pcCU, Int iPosX, Int iPosY, Int& idx, Int& bits)
+{
+  Int picWidth  = pcCU->getSlice()->getSPS()->getPicWidthInLumaSamples();
+  Int picHeight = pcCU->getSlice()->getSPS()->getPicHeightInLumaSamples();
+  Int radius = PMVP_AREA_SAERCH_RADIUS;
+  Int searhX0 = std::max(0, iPosX-radius);
+  Int searhX1 = std::min(picWidth, iPosX+radius);
+  Int searhY0 = std::max(0, iPosY-radius);
+  Int searhY1 = std::min(picHeight, iPosY+radius);
+
+  Int posMvdBitsTemp = 0;
+  Int posMvdBitsBest = MAX_INT;
+  Int posIdxBest = -1, posIdxTemp=-1;
+  for (Int posY=searhY0; posY<=searhY1; posY+=4)
+  {
+    for (Int posX=searhX0; posX<=searhX1; posX+=4)
+    {
+      // posIdx: position predictor number - 1
+      posIdxTemp = pcCU->getMVPPosNumByCoord(posX, posY) - 1;
+      if (posIdxTemp >= 0 && posIdxTemp< m_uiMVPPosNum)
+      {
+        posMvdBitsTemp = xGetExpGolombNumberOfBits(iPosX - m_acMVPPosPred[posIdxTemp].getHor()) +
+                        xGetExpGolombNumberOfBits(iPosY - m_acMVPPosPred[posIdxTemp].getVer());
+        if (posMvdBitsTemp < posMvdBitsBest)
+        {
+          posMvdBitsBest = posMvdBitsTemp;
+          posIdxBest = posIdxTemp;
+        }
+      }
+    }
+  }
+  idx = posIdxBest;
+  bits = posMvdBitsBest;
+}
+
+Void TEncSearch::getPmvpPredFast(TComDataCU* pcCU, Int iPosX, Int iPosY, Int& idx, Int& bits)
+{
+  // exhaustive search: when predictor list is short
+  if (m_uiMVPPosNum<=PMVP_AREA_SAERCH_LUT_SKIP)
+  {
+    getPmvpPredList(iPosX, iPosY, idx, bits);
+    return;
+  }
+  // adjacent position predictor search
+#if PMVP_AREA_SAERCH_LUT
+  getPmvpPredLUT(pcCU, iPosX, iPosY, idx, bits);
+#else
+  getPmvpPredArea(pcCU, iPosX, iPosY, idx, bits);
+#endif
+}
+
+Void TEncSearch::getIbcMvpPred(TComDataCU* pcCU, TComMv* mvCand, Int mvX, Int mvY, Int puX, Int puY, Int& idx, Int& bits)
+{
+#if PMVP_AS_ME_PREDS
+  Int mvpIdxBits[3] = {0, 1, 1};
+#else
+  Int mvpIdxBits[2] = {0, 0};
+#endif
+  Int bitsAMVPTemp = 0;
+  Int bitsAMVPBest = MAX_INT;
+
+  for ( Int mvpIdxTemp=0; mvpIdxTemp<2; mvpIdxTemp++ )
+  {
+    bitsAMVPTemp = xGetExpGolombNumberOfBits(mvX - mvCand[mvpIdxTemp].getHor()) +
+                   xGetExpGolombNumberOfBits(mvY - mvCand[mvpIdxTemp].getHor());
+    if ( mvpIdxBits[mvpIdxTemp] + bitsAMVPTemp < bitsAMVPBest )
+    {
+      bits = bitsAMVPTemp + mvpIdxBits[mvpIdxTemp];
+      idx = mvpIdxTemp;
+    }
+  }
+
+#if PMVP_AS_ME_PREDS
+  Int posIdxBest = -1;
+  Int bitsPosMvd = MAX_INT;
+  getPmvpPredFast(pcCU, puX+mvX, puY+mvY, posIdxBest, bitsPosMvd);
+  if (posIdxBest!=-1)
+  {
+    Int bitsPosIdx = xGetTruncatedBinBits(posIdxBest, m_uiMVPPosNum);
+    // compare with original amvp
+    if ( mvpIdxBits[2] + bitsPosMvd + bitsPosIdx < bitsAMVPBest )
+    {
+      bits = mvpIdxBits[2] + bitsPosMvd + bitsPosIdx;
+      idx = 2 + posIdxBest;
+    }
+  }
+#endif
+}
+
+__inline Distortion TEncSearch::getCostIbcAmvpPred(TComDataCU* pcCU, Int mvX, Int mvY, Int puX, Int puY)
+{
+  return m_pcRdCost->getCostMultiplePreds( mvX, mvY);
+}
+
+__inline Distortion TEncSearch::getCostIbcPmvpPred(TComDataCU* pcCU, Int mvX, Int mvY, Int puX, Int puY)
+{
+  Int idx=0, bits=MAX_INT;
+  getIbcMvpPred(pcCU, m_pcRdCost->getPredictors(), mvX, mvY, puX, puY, idx, bits);
+  return m_pcRdCost->getCost( bits );
+}
+#endif
+
 // based on predInterSearch()
 Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
                                     TComYuv    * pcOrgYuv,
@@ -9635,6 +9818,10 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
                                     Bool         bUse1DSearchFor8x8,
                                     Bool         bUseRes,
                                     Bool         testOnlyPred
+#if IBC_ME_FROM_VTM
+                                    ,
+                                    IbcHashMap& ibcHashMap
+#endif
                                     )
 {
   rpcPredYuv->clear();
@@ -9650,6 +9837,9 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
   {
     return false;
   }
+#if PMVP_ON
+  UInt uiTempMVPPosNum = m_uiMVPPosNum; // temp checkpoint before multi part
+#endif
 
   const Int numPart = pcCU->getNumPartitions();
   Distortion totalCost = 0;
@@ -9660,7 +9850,7 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
     pcCU->getPartIndexAndSize( partIdx, partAddr, width, height );
 
     TComMvField cMEMvField;
-    Distortion  cost;
+    Distortion  cost = 0;
 
     TComMv      cMv, cMvd, cMvPred[2];
     AMVPInfo currAMVPInfo;
@@ -9668,7 +9858,23 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
     cMvPred[0].set( currAMVPInfo.m_acMvCand[0].getHor() >> 2, currAMVPInfo.m_acMvCand[0].getVer() >> 2);
     cMvPred[1].set( currAMVPInfo.m_acMvCand[1].getHor() >> 2, currAMVPInfo.m_acMvCand[1].getVer() >> 2);
 
+#if IBC_ME_FROM_VTM
+    cMv.setZero();
+    if (m_pcEncCfg->getUseHashBasedIntraBCSearch())
+    {
+      int mvpIdx;
+      xxIBCHashSearch(pcCU, pcOrgYuv, partIdx, cMvPred, cMv, mvpIdx, ibcHashMap);
+    }
+    if (cMv.getHor() == 0 && cMv.getVer() == 0)
+    {
+      // if hash search does not work or is not enabled
+#endif
+
     xIntraBlockCopyEstimation ( pcCU, pcOrgYuv, partIdx, cMvPred, cMv, cost, bUse1DSearchFor8x8, testOnlyPred );
+
+#if IBC_ME_FROM_VTM
+    }
+#endif
 
     if( m_pcEncCfg->getUseHashBasedIntraBCSearch()
       && pcCU->getWidth(0) == 8
@@ -9682,7 +9888,9 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
       xIntraBCHashSearch ( pcCU, pcOrgYuv, partIdx, cMvPred, cMv, (UInt)intraBCECost);
       cost = std::min(intraBCECost, cost);
     }
+#if !IBC_ME_FROM_VTM
     totalCost += cost;
+#endif
     // choose one MVP and compare with merge mode
     // no valid intra BV
     if ( cMv.getHor() == 0 && cMv.getVer() == 0 )
@@ -9746,6 +9954,7 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
     cMvPred[1].setHor( currAMVPInfo.m_acMvCand[1].getHor() >> 2);
     cMvPred[1].setVer( currAMVPInfo.m_acMvCand[1].getVer() >> 2);
 
+#if !PMVP_ON
     for ( mvpIdxTemp=0; mvpIdxTemp<currAMVPInfo.iN; mvpIdxTemp++ )
     {
       m_pcRdCost->setPredictor( cMvPred[mvpIdxTemp] );
@@ -9757,6 +9966,47 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
       }
     }
     bitsAMVPBest++; // for MVP Index bits
+#else
+    Int mvpIdxBits[3] = {1, 2, 2};
+
+    for ( mvpIdxTemp=0; mvpIdxTemp<currAMVPInfo.iN; mvpIdxTemp++ ) // currAMVPInfo.iN
+    {
+      m_pcRdCost->setPredictor( cMvPred[mvpIdxTemp] );
+      bitsAMVPTemp = m_pcRdCost->getBitsOfVectorWithPredictor( cMv.getHor(), cMv.getVer() );
+      if ( mvpIdxBits[mvpIdxTemp] + bitsAMVPTemp < bitsAMVPBest )
+      {
+        bitsAMVPBest = bitsAMVPTemp + mvpIdxBits[mvpIdxTemp];
+        mvpIdxBest = mvpIdxTemp;
+      }
+    }
+
+    // start pmvp
+    Int xPUPos, yPUPos;
+    pcCU->getPartPosition(partIdx, xPUPos, yPUPos, width, height);
+
+    Int xRefPos = xPUPos + cMv.getHor();
+    Int yRefPos = yPUPos + cMv.getVer();
+    Int posIdxBest = -1;
+    Int bitsPosMvd = MAX_INT;
+    TComMv posPredMv;
+    TComMv posCur(xPUPos, yPUPos);
+    TComMv posRef(xRefPos, yRefPos);
+
+    getPmvpPredFast(pcCU, xRefPos, yRefPos, posIdxBest, bitsPosMvd);
+
+    if (posIdxBest!=-1)
+    {  // TODO: min SAD is not perfect for best MVD bits
+      posPredMv = m_acMVPPosPred[posIdxBest] - posCur;
+      m_pcRdCost->setPredictor( posPredMv );
+      Int bitsPosIdx = xGetTruncatedBinBits(posIdxBest, m_uiMVPPosNum);
+      // compare with original amvp
+      if ( mvpIdxBits[2] + bitsPosMvd + bitsPosIdx < bitsAMVPBest ) // idx,mvd vs idx,pos,mvd
+      {
+        bitsAMVPBest = mvpIdxBits[2] + bitsPosMvd + bitsPosIdx;
+        mvpIdxBest = 2;
+      }
+    }
+#endif
     costAMVPBest = distAMVPBest + m_pcRdCost->getCost( bitsAMVPBest );
 
     TComMvField cMvFieldNeighbours[MRG_MAX_NUM_CANDS << 1]; // double length for mv of both lists
@@ -9866,6 +10116,32 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
       pcCU->getCUMvField( REF_PIC_LIST_1 )->setAllMvField( mvField[1], ePartSize, partAddr, 0, partIdx );
 
       TComMv mvd( cMv.getHor() - (currAMVPInfo.m_acMvCand[mvpIdxBest].getHor() >> 2), cMv.getVer() - (currAMVPInfo.m_acMvCand[mvpIdxBest].getVer()>>2) );
+#if PMVP_ON
+      if (mvpIdxBest == 2)
+      {
+        mvd = cMv - posPredMv;
+        pcCU->setMVPPosIdxSubParts( posIdxBest, partAddr, partIdx, depth );
+#if PMVP_CACHE_MVD_THRESH
+        if (mvd.getAbsHor() + mvd.getAbsVer() >=PMVP_CACHE_MVD_THRESH)
+        {
+          pcCU->setMVPPosNumSubParts( m_uiMVPPosNum+1, partAddr, partIdx, depth );
+          addMVPPosPred(xPUPos, yPUPos);
+        }
+        else pcCU->setMVPPosNumSubParts( -m_uiMVPPosNum-1, partAddr, partIdx, depth );
+#else
+        pcCU->setMVPPosNumSubParts( m_uiMVPPosNum+1, partAddr, partIdx, depth );
+        addMVPPosPred(xPUPos, yPUPos);
+#endif
+      }
+      else
+      {
+        pcCU->setMVPPosIdxSubParts( 0, partAddr, partIdx, depth );
+        addMVPPosPred(xPUPos, yPUPos);
+        pcCU->setMVPPosNumSubParts( m_uiMVPPosNum, partAddr, partIdx, depth );
+        addMVPPosPred(xRefPos, yRefPos);
+        pcCU->setMVPPosNumByCoord( m_uiMVPPosNum, xRefPos, yRefPos);
+      }
+#endif
       pcCU->getCUMvField( REF_PIC_LIST_0 )->setAllMvd( mvd,    ePartSize, partAddr, 0, partIdx );
       pcCU->getCUMvField( REF_PIC_LIST_1 )->setAllMvd( zeroMv, ePartSize, partAddr, 0, partIdx );
       pcCU->setMVPIdxSubParts( mvpIdxBest, REF_PIC_LIST_0, partAddr, partIdx, depth );
@@ -9896,7 +10172,14 @@ Bool TEncSearch::predIntraBCSearch( TComDataCU * pcCU,
       return false;
     }
 #endif
+#if IBC_ME_FROM_VTM
+    totalCost += std::min(costAMVPBest, costMergeBest);
+#endif
   }
+#if PMVP_ON
+  setMVPPosNum(uiTempMVPPosNum); // back to checkpoint
+#endif
+  //}
 
   Distortion abortThreshold = pcCU->getWidth(0)*pcCU->getHeight(0)*2;
   if( testOnlyPred )
@@ -11356,6 +11639,73 @@ Void TEncSearch::xIntraPatternSearch( TComDataCU  *pcCU,
     rcMv.set( bestX, bestY );
     sadBest = sadBestCand[0];
 
+#if PMVP_AS_ME_CANDS
+    if (m_uiMVPPosNum)
+    {
+      UInt bitsPosIdxBase = xGetTruncatedBinBits(0, m_uiMVPPosNum);
+      UInt bitsPosIdxThresh = (1 << (bitsPosIdxBase+1)) - m_uiMVPPosNum;
+      for(UInt cand = 0; cand < m_uiMVPPosNum; cand++)
+      {
+        if ( cand >= bitsPosIdxThresh) bitsPosIdxBase++;
+        Int xPred = m_acMVPPosPred[cand].getHor() - cuPelX;
+        Int yPred = m_acMVPPosPred[cand].getVer() - cuPelY;
+        if ( !( xPred==0 && yPred==0)
+              && !( (yPred < srTop)  || (yPred > srBottom) )
+              && !( (xPred < srLeft) || (xPred > srRight) ) )
+        {
+          Int tempY = yPred + relCUPelY + roiHeight - 1;
+          Int tempX = xPred + relCUPelX + roiWidth  - 1;
+          Bool validCand = isValidIntraBCSearchArea(pcCU, xPred, yPred, chromaROIWidthInPixels, chromaROIHeightInPixels, partOffset);
+
+          if((tempX >= (Int)lcuWidth) && (tempY >= 0) && m_pcEncCfg->getUseIntraBCFullFrameSearch())
+          {
+            validCand = false;
+          }
+
+          if ((tempX >= 0) && (tempY >= 0))
+          {
+            Int iTempRasterIdx = (tempY/pcCU->getPic()->getMinCUHeight()) * pcCU->getPic()->getNumPartInCtuWidth() + (tempX/pcCU->getPic()->getMinCUWidth());
+            Int iTempZscanIdx = g_auiRasterToZscan[iTempRasterIdx];
+            if(iTempZscanIdx >= pcCU->getZorderIdxInCtu())
+            {
+              validCand = false;
+            }
+          }
+
+          if( validCand )
+          {
+            // sad = m_pcRdCost->getCostMultiplePreds( xPred, yPred);
+            sad = m_pcRdCost->getCost(bitsPosIdxBase+2); //mvp=posIdx, mvd=0,0
+
+            for(int r = 0; r < roiHeight; )
+            {
+              piRefSrch = piRefY + yPred * refStride + r*refStride + xPred;
+              m_cDistParam.pCur = piRefSrch;
+              m_cDistParam.pOrg = pcPatternKey->getROIY() + r * pcPatternKey->getPatternLStride();
+
+              sad += m_cDistParam.DistFunc( &m_cDistParam );
+              if (sad > sadBestCand[CHROMA_REFINEMENT_CANDIDATES - 1])
+              {
+                break;
+              }
+
+              r += 4;
+            }
+
+            xIntraBCSearchMVCandUpdate(sad, xPred, yPred, sadBestCand, cMVCand);
+          }
+        }
+      }
+
+      bestX = cMVCand[0].getHor();
+      bestY = cMVCand[0].getVer();
+      rcMv.set( bestX, bestY );
+      sadBest = sadBestCand[0];
+
+    }
+#endif
+
+
     if( testOnlyPred )
     {
       SAD = sadBest;
@@ -11895,6 +12245,59 @@ Int TEncSearch::xIntraBCHashTableIndex(TComDataCU* pcCU, Int posX, Int posY, Int
   return hashIdx;
 }
 
+#if IBC_ME_FROM_VTM
+void TEncSearch::xxIBCHashSearch(TComDataCU* pcCU, TComYuv* pcYuvOrg, int partIdx, TComMv* pcMvPred, TComMv& rcMv, int& idxMvPred, IbcHashMap& ibcHashMap)
+{
+  rcMv.setZero();
+  m_pcRdCost->setCostScale(0);
+
+  UInt      partAddr;
+  Int       roiWidth;
+  Int       roiHeight;
+  pcCU->getPartIndexAndSize(partIdx, partAddr, roiWidth, roiHeight);
+
+  const Int   puPelOffsetX = g_auiRasterToPelX[g_auiZscanToRaster[partAddr]];
+  const Int   puPelOffsetY = g_auiRasterToPelY[g_auiZscanToRaster[partAddr]];
+  const Int   cuPelX = pcCU->getCUPelX() + puPelOffsetX;  // Point to the location of PU
+  const Int   cuPelY = pcCU->getCUPelY() + puPelOffsetY;
+
+  std::vector<Position> candPos;
+  UInt ibcHashSearchMaxCand = 256;
+  UInt ibcHashSearchRange4SmallBlk = 256;
+
+  Area puArea(Position(cuPelX, cuPelY), TSize(roiWidth, roiHeight));
+  if (ibcHashMap.ibcHashMatch(puArea, candPos, ibcHashSearchMaxCand, ibcHashSearchRange4SmallBlk, pcCU->getSlice()->getSPS()->getMaxCUWidth()))
+  {
+    unsigned int minCost = MAX_UINT;
+    for (std::vector<Position>::iterator pos = candPos.begin(); pos != candPos.end(); pos++)
+    {
+      //Position bottomRight = pos->offset(puArea.width - 1, puArea.height - 1);
+      Position tmp = *pos - puArea.pos();
+      TComMv candMv;
+      candMv.set(tmp.x, tmp.y);
+
+      if (!isBlockVectorValid(cuPelX, cuPelY, roiWidth, roiHeight, pcCU, puPelOffsetX, puPelOffsetY, candMv.getHor(), candMv.getVer(), pcCU->getSlice()->getSPS()->getMaxCUWidth()))
+      {
+        continue;
+      }
+
+      for (int n = 0; n < 2; n++)
+      {
+        m_pcRdCost->setPredictor(pcMvPred[n]);
+        unsigned int cost = m_pcRdCost->getBitsOfVectorWithPredictor(candMv.getHor(), candMv.getVer());
+
+        if (cost < minCost)
+        {
+          rcMv = candMv;
+          idxMvPred = n;
+          minCost = cost;
+        }
+      }
+    }
+  }
+}
+#endif
+
 Void TEncSearch::xIntraBCHashSearch( TComDataCU* pcCU, TComYuv* pcYuvOrg, Int partIdx, TComMv* pcMvPred, TComMv& rcMv, UInt intraBCECost)
 {
   UInt      partAddr;
@@ -12043,12 +12446,20 @@ Void TEncSearch::xIntraBCHashSearch( TComDataCU* pcCU, TComYuv* pcYuvOrg, Int pa
 
     if(sad <= 16)
     {
+#if !PMVP_AS_ME_PREDS
       sad += m_pcRdCost->getCostMultiplePreds( tempX - cuPelX, tempY - cuPelY);
+#else
+      sad += getCostIbcPmvpPred(pcCU, tempX - cuPelX, tempY - cuPelY, cuPelX, cuPelY);
+#endif
       xIntraBCSearchMVCandUpdate(sad, tempX - cuPelX, tempY - cuPelY, sadBestCand, cMVCand);
       break;
     }
 
+#if !PMVP_AS_ME_PREDS
     sad += m_pcRdCost->getCostMultiplePreds( tempX - cuPelX, tempY - cuPelY);
+#else
+    sad += getCostIbcPmvpPred(pcCU, tempX - cuPelX, tempY - cuPelY, cuPelX, cuPelY);
+#endif
     xIntraBCSearchMVCandUpdate(sad, tempX - cuPelX, tempY - cuPelY, sadBestCand, cMVCand);
     HashLinklist = HashLinklist->next;
   }

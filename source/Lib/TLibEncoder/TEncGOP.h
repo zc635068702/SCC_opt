@@ -52,6 +52,9 @@
 #include "TEncEntropy.h"
 #include "TEncCavlc.h"
 #include "TEncSbac.h"
+#if CNN_FILTERING
+#include "TEncCNNFilter.h"
+#endif
 #include "SEIwrite.h"
 #include "SEIEncoder.h"
 #if EXTENSION_360_VIDEO
@@ -61,6 +64,10 @@
 #include "TEncAnalyze.h"
 #include "TEncRateCtrl.h"
 #include <vector>
+
+#if TEXT_CODEC
+#include "Utilities/displacement.h"
+#endif
 
 //! \ingroup TLibEncoder
 //! \{
@@ -126,6 +133,9 @@ private:
   TEncSbac*               m_pcSbacCoder;
   TEncBinCABAC*           m_pcBinCABAC;
   TComLoopFilter*         m_pcLoopFilter;
+#if CNN_FILTERING
+  TEncCNNFilter*          m_pcCNNFilter;
+#endif
 
   SEIWriter               m_seiWriter;
 
@@ -158,6 +168,13 @@ private:
 
   list<Double>            m_CSMRate;
   list<Double>            m_MRate;
+
+#if TEXT_CODEC
+  TComPicYuv*             m_pcOrgBuffer    = NULL;
+  TComPicYuv*             m_pcTextLayerRec = NULL;
+  UInt                    uibitsTextLayer;
+  DisplacementParameterSet* dps;
+#endif
 
 public:
   TEncGOP();
@@ -203,6 +220,17 @@ public:
   TComPPS* getPPS(Int id);
   TComPPS* copyToNewPPS(Int ppsId, TComPPS* pps0);
   TComSPS* getSPS(Int id);
+
+#if TEXT_CODEC
+  Void          setOrgBuffer      ( TComPicYuv* p )          { m_pcOrgBuffer = p;        }
+  TComPicYuv*   getOrgBuffer      () const                   { return  m_pcOrgBuffer;    }
+  Void          setTextLayerRec   ( TComPicYuv* p )          { m_pcTextLayerRec = p;     }
+  TComPicYuv*   getTextLayerRec   () const                   { return  m_pcTextLayerRec; }
+  Void          setTextLayerBit   ( UInt u )                 { uibitsTextLayer = u;           }
+  UInt          getTextLayerBit   () const                   { return  uibitsTextLayer;       }
+  Void          setTextSCCParameterSet (DisplacementParameterSet* p)          { dps = p; }
+#endif
+
 protected:
   TEncRateCtrl* getRateCtrl()       { return m_pcRateCtrl;  }
 
@@ -210,6 +238,10 @@ protected:
 
   Void  xInitGOP          ( Int iPOCLast, Int iNumPicRcvd, Bool isField );
   Void  xGetBuffer        ( TComList<TComPic*>& rcListPic, TComList<TComPicYuv*>& rcListPicYuvRecOut, Int iNumPicRcvd, Int iTimeOffset, TComPic*& rpcPic, TComPicYuv*& rpcPicYuvRecOut, Int pocCurr, Bool isField );
+
+#if TEXT_CODEC
+  Void  yuvStitch( TComPic* pcPic, const InputColourSpaceConversion snr_conversion );
+#endif
 
   Void  xCalculateAddPSNRs         ( const Bool isField, const Bool isFieldTopFieldFirst, const Int iGOPid, TComPic* pcPic, const AccessUnit&accessUnit, TComList<TComPic*> &rcListPic, Double dEncTime, const InputColourSpaceConversion ip_conversion, const InputColourSpaceConversion snr_conversion, const TEncAnalyze::OutputLogControl &outputLogCtrl, Double* PSNR_Y );
   Void  xCalculateAddPSNR          ( TComPic* pcPic, TComPicYuv* pcPicD, const AccessUnit&, Double dEncTime, const InputColourSpaceConversion ip_conversion, const InputColourSpaceConversion snr_conversion, const TEncAnalyze::OutputLogControl &outputLogCtrl, Double* PSNR_Y );
@@ -250,6 +282,10 @@ protected:
   Int xWriteSPS (AccessUnit &accessUnit, const TComSPS *sps);
   Int xWritePPS (AccessUnit &accessUnit, const TComPPS *pps);
   Int xWriteParameterSets (AccessUnit &accessUnit, TComSlice *slice, const Bool bSeqFirst);
+#if TEXT_CODEC
+  Int xWriteSPSHgtWdt (AccessUnit &accessUnit, const TComSPS *sps);
+  Int xWriteParameterSetsOfTextSCC (AccessUnit &accessUnit, TComSlice *slice, const Bool bSeqFirst);
+#endif
 
   Void applyDeblockingFilterMetric( TComPic* pcPic, UInt uiNumSlices );
   Void applyDeblockingFilterParameterSelection( TComPic* pcPic, const UInt numSlices, const Int gopID );

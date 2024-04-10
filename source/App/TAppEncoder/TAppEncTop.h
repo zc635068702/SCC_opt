@@ -46,6 +46,11 @@
 #include "TLibCommon/AccessUnit.h"
 #include "TAppEncCfg.h"
 
+#if TEXT_CODEC
+#include "Utilities/displacement.h"
+#include "Utilities/text_optimization_main.h"
+#endif
+
 //! \ingroup TAppEncoder
 //! \{
 
@@ -59,6 +64,9 @@ class TAppEncTop : public TAppEncCfg
 private:
   // class interface
   TEncTop                    m_cTEncTop;                    ///< encoder class
+#if TEXT_CODEC
+  TEncTop                    m_cTEncTopTextLayer;           ///< encoder class for text
+#endif
   TVideoIOYuv                m_cTVideoIOYuvInputFile;       ///< input YUV file
   TVideoIOYuv                m_cTVideoIOYuvReconFile;       ///< output reconstruction file
 
@@ -72,9 +80,23 @@ private:
 protected:
   // initialization
   Void  xCreateLib        ();                               ///< create files & encoder class
+#if TEXT_CODEC
+  Void  xInitLibCfg       (TEncTop& m_cTEncTop);            ///< initialize internal variables
+#else
   Void  xInitLibCfg       ();                               ///< initialize internal variables
+#endif
   Void  xInitLib          (Bool isFieldCoding);             ///< initialize encoder class
   Void  xDestroyLib       ();                               ///< destroy encoder class
+
+#if TEXT_CODEC
+  Void  TextSCC_InitLibCfg (Bool isFieldCoding);
+  cv::Mat   YUV2Mat(TComPicYuv* pcPicYuvOrg, const InputColourSpaceConversion ipCSC,
+                Int confLeft, Int confRight, Int confTop, Int confBottom,
+                ChromaFormat format, const Bool bClipToRec709);
+  Void  xSetGOPEncoder_bufOrg(TEncGOP* m_cGOPEncoder, TComPicYuv* pcPicYuvOrg);
+  Void  xSetGOPEncoder(TEncGOP* m_cGOPEncoder, UInt uibitsTextLayer, DisplacementParameterSet* dps);
+  Void  xDestroyTextSCCclass(DisplacementParameterSet* dps, TextOptimization* textOpt);
+#endif
 
   /// obtain required buffers
   Void xGetBuffer(TComPicYuv*& rpcPicYuvRec);

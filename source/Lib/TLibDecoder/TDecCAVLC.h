@@ -73,6 +73,9 @@ public:
   Void  parseQtRootCbf      ( UInt uiAbsPartIdx, UInt& uiQtRootCbf );
   Void  parseVPS            ( TComVPS* pcVPS );
   Void  parseSPS            ( TComSPS* pcSPS );
+#if TEXT_CODEC
+  Void  parseSPSHgtWdt      ( TComSPS* pcSPS );
+#endif
   Void  parsePPS            ( TComPPS* pcPPS );
   Void  parseVUI            ( TComVUI* pcVUI, TComSPS* pcSPS );
   Void  parseSEI            ( SEIMessages& );
@@ -84,6 +87,9 @@ public:
   Void  parseRemainingBytes ( Bool noTrailingBytesExpected );
 
   Void parseMVPIdx          ( Int& riMVPIdx );
+#if PMVP_ON
+  Void parseMVPPosIdx       ( UInt& ruiMVPPosIdx, UInt uiMaxSymbol ) {assert(0);}
+#endif
 
   Void parseSkipFlag        ( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth );
   Void parseCUTransquantBypassFlag( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth );

@@ -161,6 +161,10 @@ private:
   Double        m_tmpInterRDCost;
   Bool          m_bIntraBCCSCEnabled;
   Bool          m_bInterCSCEnabled;
+#if PMVP_ON
+  UInt*         m_puiMVPPosIdx; // position predictor index in predictor list
+  UInt*         m_puiMVPPosNum; // total position predictor number of predictor list
+#endif
 
   // -------------------------------------------------------------------------------------------------------------------
   // misc. variables
@@ -355,6 +359,10 @@ public:
   Void          setMergeIndexSubParts         ( UInt uiMergeIndex, UInt uiAbsPartIdx, UInt uiPartIdx, UInt uiDepth );
   template <typename T>
   Void          setSubPart                    ( T bParameter, T* pbBaseCtu, UInt uiCUAddr, UInt uiCUDepth, UInt uiPUIdx );
+#if PMVP_ON
+  template <typename T>
+  Void          setSubPartIter                ( T const & val, T *p, Int iPartAddr, UInt uiDepth, Int iPartIdx );
+#endif
 
 #if AMP_MRG
   Void          setMergeAMP                   ( Bool b )                                                   { m_bIsMergeAMP = b;                         }
@@ -404,6 +412,16 @@ public:
   Int           getMVPNum                     ( RefPicList eRefPicList, UInt uiIdx ) const                 { return m_apiMVPNum[eRefPicList][uiIdx];    }
   SChar*        getMVPNum                     ( RefPicList eRefPicList )                                   { return m_apiMVPNum[eRefPicList];           }
 
+#if PMVP_ON
+  UInt*         getMVPPosIdx                  ( )                                                          { return m_puiMVPPosIdx;                     }
+  UInt*         getMVPPosNum                  ( )                                                          { return m_puiMVPPosNum;                     }
+  Int           getMVPPosIdx                  ( UInt uiIdx ) const                                         { return m_puiMVPPosIdx[uiIdx];              }
+  Int           getMVPPosNum                  ( UInt uiIdx ) const                                         { return m_puiMVPPosNum[uiIdx];              }
+  Void          setMVPPosIdxSubParts          ( UInt uiMVPPosIdx, UInt uiAbsPartIdx, UInt uiPartIdx, UInt uiDepth );
+  Void          setMVPPosNumSubParts          ( UInt uiMVPPosNum, UInt uiAbsPartIdx, UInt uiPartIdx, UInt uiDepth );
+  Int           getMVPPosNumByCoord           ( Int posX, Int posY );
+  Bool          setMVPPosNumByCoord           ( Int idx, Int posX, Int posY);
+#endif
   Void          setMVPIdxSubParts             ( Int iMVPIdx, RefPicList eRefPicList, UInt uiAbsPartIdx, UInt uiPartIdx, UInt uiDepth );
   Void          setMVPNumSubParts             ( Int iMVPNum, RefPicList eRefPicList, UInt uiAbsPartIdx, UInt uiPartIdx, UInt uiDepth );
 

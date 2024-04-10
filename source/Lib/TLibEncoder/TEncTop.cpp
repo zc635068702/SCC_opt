@@ -89,6 +89,9 @@ TEncTop::~TEncTop()
 Void TEncTop::create ()
 {
   // initialize global variables
+#if TEXT_CODEC
+  if (m_backgroundLayerFlag)
+#endif
   initROM();
   TComHash::initBlockSizeToIndex();
 
@@ -176,10 +179,45 @@ Void TEncTop::destroy ()
   delete [] m_pppcBinCoderCABAC;
 
   // destroy ROM
+#if TEXT_CODEC
+  if (m_backgroundLayerFlag)
+#endif
   destroyROM();
 
   return;
 }
+
+#if TEXT_CODEC
+Void TEncTop::initTextSCC(Bool backgroundLayerFlag, Bool textSCCFlag, int* bgColor)
+{
+  m_backgroundLayerFlag = backgroundLayerFlag;
+  m_cRdCost.setLayerFlag(m_backgroundLayerFlag);
+
+  // init sps
+  TComSPS &sps0 = *(m_spsMap.allocatePS(0)); // NOTE: implementations that use more than 1 SPS need to be aware of activation issues.
+  sps0.setLayerFlag (m_backgroundLayerFlag);
+  sps0.setTextSCCFlag (textSCCFlag);
+  sps0.setBgColor (bgColor);
+}
+#endif
+
+#if 0 // IBC_MVD_ADAPT_RESOLUTION
+Void TEncTop::initIBCAdaptMvd(UInt widthAlignSize, UInt heightAlignSize)
+{
+  // init sps
+  TComSPS &sps0 = *(m_spsMap.allocatePS(0)); // NOTE: implementations that use more than 1 SPS need to be aware of activation issues.
+  if (widthAlignSize)
+  {
+    UInt mvdPrecHor = g_aucConvertToBit[widthAlignSize] + 2;
+    sps0.setMvdPrecHor(mvdPrecHor);
+  }
+  if (heightAlignSize)
+  {
+    UInt mvdPrecVer = g_aucConvertToBit[heightAlignSize] + 2;
+    sps0.setMvdPrecVer(mvdPrecVer);
+  }
+}
+#endif
 
 Void TEncTop::init(Bool isFieldCoding)
 {
@@ -342,6 +380,17 @@ Void TEncTop::encode( Bool flush, TComPicYuv* pcPicYuvOrg, TComPicYuv* pcPicYuvT
     xGetNewPicBuffer( pcPicCurr, ppsID );
     pcPicYuvOrg->copyToPic( pcPicCurr->getPicYuvOrg() );
     pcPicYuvTrueOrg->copyToPic( pcPicCurr->getPicYuvTrueOrg() );
+
+#if IBC_MVD_ADAPT_RESOLUTION
+    if (iNumEncoded == 0)
+    {
+      TComSPS &sps = *(m_spsMap.allocatePS(0));
+      UInt mvdPrecHor = sps.getMvdPrecHor();
+      UInt mvdPrecVer = sps.getMvdPrecVer();
+      setMvdPrec(mvdPrecHor, mvdPrecVer);
+      cout << "mvdPrecHor&mvdPrecVer: " << mvdPrecHor << " " << mvdPrecVer << endl;
+    }
+#endif
 
     // compute image characteristics
     if ( getUseAdaptiveQP() )
@@ -631,6 +680,11 @@ Void TEncTop::xInitSPS(TComSPS &sps)
   /* XXX: may be a good idea to refactor the above into a function
    * that chooses the actual compatibility based upon options */
 
+#if TEXT_CODEC
+  sps.setLayerFlag              ( true );
+  sps.setTextSCCFlag            ( false );
+#endif
+
   sps.setPicWidthInLumaSamples  ( m_iSourceWidth      );
   sps.setPicHeightInLumaSamples ( m_iSourceHeight     );
   sps.setConformanceWindow      ( m_conformanceWindow );
@@ -664,6 +718,31 @@ Void TEncTop::xInitSPS(TComSPS &sps)
   sps.setMaxTrSize   ( 1 << m_uiQuadtreeTULog2MaxSize );
 
   sps.setUseAMP ( m_useAMP );
+
+#if IBC_MVD_ADAPT_RESOLUTION && TEXT_CODEC
+  if (m_textSCCDisplaceAlignSizeinWidth)
+  {
+#if MVD_PREC_HOR
+    sps.setMvdPrecHor(MVD_PREC_HOR);
+#else
+    UInt mvdPrecHor = g_aucConvertToBit[m_textSCCDisplaceAlignSizeinWidth] + 2;
+    sps.setMvdPrecHor(mvdPrecHor);
+#endif
+  }
+  else
+    sps.setMvdPrecHor(0);
+  if (m_textSCCDisplaceAlignSizeinHeight)
+  {
+#if MVD_PREC_VER
+    sps.setMvdPrecVer(MVD_PREC_VER);
+#else
+    UInt mvdPrecVer = g_aucConvertToBit[m_textSCCDisplaceAlignSizeinHeight] + 2;
+    sps.setMvdPrecVer(mvdPrecVer);
+#endif
+  }
+  else
+    sps.setMvdPrecVer(0);
+#endif
 
   for (UInt channelType = 0; channelType < MAX_NUM_CHANNEL_TYPE; channelType++)
   {

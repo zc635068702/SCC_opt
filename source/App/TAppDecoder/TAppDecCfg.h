@@ -79,6 +79,9 @@ protected:
 #if MCTS_ENC_CHECK
   Bool          m_tmctsCheck;
 #endif
+#if TEXT_CODEC
+  Bool          m_textSCCFlag = false;                ///< if use textSCC
+#endif
 
 public:
   TAppDecCfg()

@@ -79,6 +79,9 @@ TDecSbac::TDecSbac()
 , m_cCUQtCbfSCModel                          ( 1,             NUM_QT_CBF_CTX_SETS,    NUM_QT_CBF_CTX_PER_SET               , m_contextModels + m_numContextModels, m_numContextModels)
 , m_cCUTransSubdivFlagSCModel                ( 1,             1,                      NUM_TRANS_SUBDIV_FLAG_CTX            , m_contextModels + m_numContextModels, m_numContextModels)
 , m_cCUQtRootCbfSCModel                      ( 1,             1,                      NUM_QT_ROOT_CBF_CTX                  , m_contextModels + m_numContextModels, m_numContextModels)
+#if IBC_MVD_ADAPT_RESOLUTION
+, m_cCUIBCMvd32PelSCModel                    ( 1,              1,                      2                                   , m_contextModels + m_numContextModels, m_numContextModels)
+#endif
 , m_cCUSigCoeffGroupSCModel                  ( 1,             2,                      NUM_SIG_CG_FLAG_CTX                  , m_contextModels + m_numContextModels, m_numContextModels)
 , m_cCUSigSCModel                            ( 1,             1,                      NUM_SIG_FLAG_CTX                     , m_contextModels + m_numContextModels, m_numContextModels)
 , m_cCuCtxLastX                              ( 1,             NUM_CTX_LAST_FLAG_SETS, NUM_CTX_LAST_FLAG_XY                 , m_contextModels + m_numContextModels, m_numContextModels)
@@ -159,6 +162,9 @@ Void TDecSbac::resetEntropy(TComSlice* pSlice)
   m_cCUDeltaQpSCModel.initBuffer                  ( sliceType, qp, (UChar*)INIT_DQP );
   m_cCUQtCbfSCModel.initBuffer                    ( sliceType, qp, (UChar*)INIT_QT_CBF );
   m_cCUQtRootCbfSCModel.initBuffer                ( sliceType, qp, (UChar*)INIT_QT_ROOT_CBF );
+#if IBC_MVD_ADAPT_RESOLUTION
+  m_cCUIBCMvd32PelSCModel.initBuffer              ( sliceType, qp, (UChar*)INIT_IBC_MVD32Pel );
+#endif
   m_cCUSigCoeffGroupSCModel.initBuffer            ( sliceType, qp, (UChar*)INIT_SIG_CG_FLAG );
   m_cCUSigSCModel.initBuffer                      ( sliceType, qp, (UChar*)INIT_SIG_FLAG );
   m_cCuCtxLastX.initBuffer                        ( sliceType, qp, (UChar*)INIT_LAST );
@@ -525,9 +531,20 @@ Void TDecSbac::parseMergeIndex ( TComDataCU* pcCU, UInt& ruiMergeIndex )
 Void TDecSbac::parseMVPIdx      ( Int& riMVPIdx )
 {
   UInt uiSymbol;
+#if PMVP_ON
+  xReadUnaryMaxSymbol(uiSymbol, m_cMVPIdxSCModel.get(0), 1, AMVP_MAX_NUM_CANDS RExt__DECODER_DEBUG_BIT_STATISTICS_PASS_OPT_ARG(STATS__CABAC_BITS__MVP_IDX) );
+#else
   xReadUnaryMaxSymbol(uiSymbol, m_cMVPIdxSCModel.get(0), 1, AMVP_MAX_NUM_CANDS-1 RExt__DECODER_DEBUG_BIT_STATISTICS_PASS_OPT_ARG(STATS__CABAC_BITS__MVP_IDX) );
+#endif
   riMVPIdx = uiSymbol;
 }
+
+#if PMVP_ON
+Void TDecSbac::parseMVPPosIdx ( UInt& ruiMVPPosIdx, UInt uiMaxSymbol )
+{
+  xReadTruncBinCode(ruiMVPPosIdx, uiMaxSymbol RExt__DECODER_DEBUG_BIT_STATISTICS_PASS_OPT_ARG(STATS__CABAC_BITS__MVP_IDX));
+}
+#endif
 
 Void TDecSbac::parseSplitFlag     ( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth )
 {
@@ -811,6 +828,56 @@ Void TDecSbac::parseMvd( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiPartIdx, UI
   UInt uiVerAbs;
   UInt uiHorSign = 0;
   UInt uiVerSign = 0;
+
+#if IBC_MVD_ADAPT_RESOLUTION
+#if ADAPTIVE_IBC_MVD
+  bool PMVPFlag = false;
+#if PMVP_ON
+  Int iSymbol = pcCU->getMVPIdx(eRefList, uiAbsPartIdx);
+  Int iRefFrame = pcCU->getCUMvField(eRefList)->getRefIdx(uiAbsPartIdx);
+  Int iCurFrame = pcCU->getSlice()->getNumRefIdx(REF_PIC_LIST_0) - 1;
+  if (iRefFrame == iCurFrame && iSymbol == 2)
+    PMVPFlag = true;
+#endif
+#endif
+#if LAYERED_IBC_MVD
+  Bool m_backgroundLayerFlag = pcCU->getSlice()->getSPS()->getLayerFlag();
+#else
+  Bool m_backgroundLayerFlag = false;
+#endif
+#if IBC_MVD_ADAPT_RESOLUTION == 1
+  UInt mvd32PelFlag = 0;
+#if ADAPTIVE_IBC_MVD
+  if (m_backgroundLayerFlag == false && PMVPFlag == false)
+#else
+  if (m_backgroundLayerFlag == false)
+#endif
+    m_pcTDecBinIf->decodeBin(mvd32PelFlag, *m_cCUIBCMvd32PelSCModel.get(0) RExt__DECODER_DEBUG_BIT_STATISTICS_PASS_OPT_ARG(STATS__CABAC_BITS__MVD));
+#elif IBC_MVD_ADAPT_RESOLUTION == 2
+  UInt mvd32PelFlagHor = 0, mvd32PelFlagVer = 0;
+#if ADAPTIVE_IBC_MVD
+  if (m_backgroundLayerFlag == false && PMVPFlag == false)
+#else
+  if (m_backgroundLayerFlag == false)
+#endif
+  {
+    m_pcTDecBinIf->decodeBin(mvd32PelFlagHor, m_cCUIBCMvd32PelSCModel.get(0, 0, 0) RExt__DECODER_DEBUG_BIT_STATISTICS_PASS_OPT_ARG(STATS__CABAC_BITS__MVD));
+    m_pcTDecBinIf->decodeBin(mvd32PelFlagVer, m_cCUIBCMvd32PelSCModel.get(0, 0, 1) RExt__DECODER_DEBUG_BIT_STATISTICS_PASS_OPT_ARG(STATS__CABAC_BITS__MVD));
+  }
+#elif IBC_MVD_ADAPT_RESOLUTION == 3
+  UInt horLSB = 0, verLSB = 0;
+#if ADAPTIVE_IBC_MVD
+  if (m_backgroundLayerFlag == false && PMVPFlag == false)
+#else
+  if (m_backgroundLayerFlag == false)
+#endif
+  {
+    xReadEpExGolomb(horLSB, 0 RExt__DECODER_DEBUG_BIT_STATISTICS_PASS_OPT_ARG(STATS__CABAC_BITS__MVD_EP));
+    xReadEpExGolomb(verLSB, 0 RExt__DECODER_DEBUG_BIT_STATISTICS_PASS_OPT_ARG(STATS__CABAC_BITS__MVD_EP));
+  }
+#endif
+#endif
+
   ContextModel *pCtx = m_cCUMvdSCModel.get( 0 );
 
   if(pcCU->getSlice()->getMvdL1ZeroFlag() && eRefList == REF_PIC_LIST_1 && pcCU->getInterDir(uiAbsPartIdx)==3)
@@ -839,7 +906,11 @@ Void TDecSbac::parseMvd( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiPartIdx, UI
       uiVerAbs += uiSymbol;
     }
 
+#if IBC_MVD_ADAPT_RESOLUTION == 3
+    if (bHorAbsGr0 || horLSB)
+#else
     if( bHorAbsGr0 )
+#endif
     {
       if( 2 == uiHorAbs )
       {
@@ -850,7 +921,11 @@ Void TDecSbac::parseMvd( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiPartIdx, UI
       m_pcTDecBinIf->decodeBinEP( uiHorSign RExt__DECODER_DEBUG_BIT_STATISTICS_PASS_OPT_ARG(STATS__CABAC_BITS__MVD_EP) );
     }
 
+#if IBC_MVD_ADAPT_RESOLUTION == 3
+    if (bVerAbsGr0 || verLSB)
+#else
     if( bVerAbsGr0 )
+#endif
     {
       if( 2 == uiVerAbs )
       {
@@ -862,6 +937,39 @@ Void TDecSbac::parseMvd( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiPartIdx, UI
     }
 
   }
+
+#if IBC_MVD_ADAPT_RESOLUTION
+#if ADAPTIVE_IBC_MVD
+  if (m_backgroundLayerFlag == false && PMVPFlag == false)
+#else
+  if (m_backgroundLayerFlag == false)
+#endif
+  {
+    UInt mvdPrecHor = pcCU->getSlice()->getSPS()->getMvdPrecHor();
+    UInt mvdPrecVer = pcCU->getSlice()->getSPS()->getMvdPrecVer();
+#if IBC_MVD_ADAPT_RESOLUTION == 1
+    if (mvd32PelFlag)
+    {
+      uiHorAbs <<= mvdPrecHor;
+      uiVerAbs <<= mvdPrecVer;
+    }
+#elif IBC_MVD_ADAPT_RESOLUTION == 2
+    if (mvd32PelFlagHor)
+    {
+      uiHorAbs <<= mvdPrecHor;
+    }
+    if (mvd32PelFlagVer)
+    {
+      uiVerAbs <<= mvdPrecVer;
+    }
+#elif IBC_MVD_ADAPT_RESOLUTION == 3
+    uiHorAbs <<= mvdPrecHor;
+    uiVerAbs <<= mvdPrecVer;
+    uiHorAbs += horLSB;
+    uiVerAbs += verLSB;
+#endif
+  }
+#endif
 
   const TComMv cMv( uiHorSign ? -Int( uiHorAbs ): uiHorAbs, uiVerSign ? -Int( uiVerAbs ) : uiVerAbs );
   pcCU->getCUMvField( eRefList )->setAllMvd( cMv, pcCU->getPartitionSize( uiAbsPartIdx ), uiAbsPartIdx, uiDepth, uiPartIdx );

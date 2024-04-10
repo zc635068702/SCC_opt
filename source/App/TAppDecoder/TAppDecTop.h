@@ -48,6 +48,10 @@
 #include "TLibDecoder/TDecTop.h"
 #include "TAppDecCfg.h"
 
+#if TEXT_CODEC
+#include "Utilities/displacement.h"
+#endif
+
 //! \ingroup TAppDecoder
 //! \{
 
@@ -88,6 +92,9 @@ protected:
   Void  xCreateDecLib     (); ///< create internal classes
   Void  xDestroyDecLib    (); ///< destroy internal classes
   Void  xInitDecLib       (); ///< initialize decoder class
+#if TEXT_CODEC
+  Void  xDestroyTextSCCclass(DisplacementParameterSet* dps, TDecGop* m_cGOPDecoder);
+#endif
 
   Void  xWriteOutput      ( TComList<TComPic*>* pcListPic , UInt tId); ///< write YUV to file
   Void  xFlushOutput      ( TComList<TComPic*>* pcListPic ); ///< flush all remaining decoded pictures to file

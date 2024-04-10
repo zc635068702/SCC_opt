@@ -36,8 +36,8 @@ if( CMAKE_COMPILER_IS_GNUCC )
   set( BUILD_STATIC OFF CACHE BOOL "Build static executables" )
 endif()
 
-# set c++11
-set( CMAKE_CXX_STANDARD 11 )
+# set c++14
+set( CMAKE_CXX_STANDARD 14 )
 set( CMAKE_CXX_STANDARD_REQUIRED ON )
 
 # compile everything position independent (even static libraries)
@@ -89,7 +89,7 @@ endif()
 #bb_enable_warnings( clang warnings-as-errors )
 
 # enable warnings
-bb_enable_warnings( msvc warnings-as-errors "/wd4996" )
+# bb_enable_warnings( msvc warnings-as-errors "/wd4996" )
 
 # enable sse4.1 build for all source files for gcc and clang
 if( UNIX OR MINGW )
@@ -124,6 +124,16 @@ if( XCODE )
   set( ENABLE_LLDBINIT_UPDATE ON )
   # add custom target to install LLDB files.
   add_subdirectory( "lldb" )
+endif()
+
+find_package( Torch )
+if ( Torch_FOUND )
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+  message( STATUS "Torch CXX flags: ${TORCH_CXX_FLAGS}" )
+  message( STATUS "Torch Libraries: ${TORCH_LIBRARIES}" )
+  message( STATUS "Torch include dirs: ${TORCH_INCLUDE_DIRS}" )
+else()
+  message( STATUS "LibTorch not found. If AI_TOOL is turned on, LibTorch is required." )
 endif()
 
 # add needed subdirectories

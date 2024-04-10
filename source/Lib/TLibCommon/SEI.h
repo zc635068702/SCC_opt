@@ -43,6 +43,10 @@
 #include "CommonDef.h"
 #include "libmd5/MD5.h"
 
+#if TEXT_CODEC
+#include "Utilities/displacement.h"
+#endif
+
 //! \ingroup TLibCommon
 //! \{
 class TComSPS;
@@ -118,6 +122,9 @@ public:
 #endif
 #if AR_SEI_MESSAGE
     ANNOTATED_REGIONS                    = 202,
+#endif
+#if TEXT_CODEC
+    TEXT_SCC_INFO                        = 300,
 #endif
   };
 
@@ -1209,4 +1216,98 @@ private:
   std::vector< SEIListOfIndices > m_rnSeiMessages;
 };
 #endif
+
+#if TEXT_CODEC
+class SEITextSCCInfo : public SEI
+{
+public:
+  PayloadType payloadType() const { return TEXT_SCC_INFO; }
+  SEITextSCCInfo() {}
+  virtual ~SEITextSCCInfo() {}
+
+  struct InitEncDecCfg
+  {
+    // 1.rowNumber       2.charBoxHeight         3.topOfFirstChar
+    // 4.leftOfFirstChar 5.rightOfLastChar       6.widthAlignSize
+    // 7.charBoxNum      8.intervalOfLeftOfChars 9.biasOfLeftOfChars
+
+    // differential coding list
+    int diffCodingList[9] = {0, 1, 1,
+                             1, 1, 0,
+                             1, 1, 0};
+
+    // zstd write format list
+    // 'B' = 0, 'b' = 1, 'h' = 2
+    int packTypeList[9] = {0, 1, 2,
+                           2, 2, 0,
+                           1, 1, 2};
+    /*
+    // if use golomb coding
+    int golombCodingList[9] = {0, 1, 0,
+                               0, 0, 0,
+                               0, 0, 1};
+    */
+  };
+
+  InitEncDecCfg EncDecCfg;
+  int diffCodingFlag;
+  int packType;
+  // int golombCodingFlag;
+
+  DisplacementParameterSet* dpsInfo;
+
+public:
+  void getCfg(int paraIdx)
+  {
+    diffCodingFlag = EncDecCfg.diffCodingList[paraIdx];
+    packType = EncDecCfg.packTypeList[paraIdx];
+    // golombCodingFlag = EncDecCfg.golombCodingList[paraIdx];
+  }
+
+  std::vector<int> computeDiff(std::vector<int> parameter)
+  {
+    std::vector<int> diffList;
+    diffList.push_back(parameter[0]);
+    int diff;
+    for (int i = 1; i < parameter.size(); i++)
+    {
+      diff = parameter[i] - parameter[i-1];
+      diffList.push_back(diff);
+    }
+
+    return diffList;
+  }
+
+  void writeDiffPara(std::vector<int>* dataflow, std::vector<int> parameter)
+  {
+    if (packType != 0)
+    {
+      if (diffCodingFlag)
+      {
+        std::vector<int> parameterDiff = computeDiff(parameter);
+        parameter = parameterDiff;
+      }
+    }
+    for (int idx = 0; idx < parameter.size(); idx++)
+      dataflow->push_back(parameter[idx]);
+  }
+
+  std::vector<int> recoverDataFromDiff(std::vector<int> diff)
+  {
+    std::vector<int> parameterDec;
+    parameterDec.push_back(diff[0]);
+    int data;
+    for (int i = 1; i < diff.size(); i++)
+    {
+      data = diff[i] + parameterDec[i-1];
+      parameterDec.push_back(data);
+    }
+
+    return parameterDec;
+  }
+
+  Void setTextSCCParameterSet(DisplacementParameterSet* dps) { dpsInfo = dps; }
+};
+#endif
+
 //! \}

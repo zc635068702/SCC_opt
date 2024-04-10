@@ -45,6 +45,10 @@
 #include "TComTU.h"
 #include "Debug.h"
 
+#if K0149_BLOCK_STATISTICS
+#include "dtrace_blockstatistics.h"
+#endif
+
 typedef struct
 {
   Int    iNNZbeforePos0;
@@ -1721,6 +1725,42 @@ Void TComTrQuant::invRecurTransformNxN( const ComponentID compID,
 
     assert(!pcCU->getColourTransform(absPartIdxTU));
     const QpParam cQP(*pcCU, compID, absPartIdxTU);
+
+#if K0149_BLOCK_STATISTICS
+    BlockStatistic blockStatsCbf, blockStatsCoeff;
+    switch (compID)
+    {
+    case COMPONENT_Y:
+      blockStatsCbf = BlockStatistic::TU_CBF_Y;
+      blockStatsCoeff = BlockStatistic::TU_COEFF_ENERGY_Y;
+      break;
+    //case COMPONENT_Cb:
+    //  blockStatsCbf = BlockStatistic::TU_CBF_CB;
+    //  blockStatsCoeff = BlockStatistic::TU_COEFF_ENERGY_CB;
+    //  break;
+    //case COMPONENT_Cr:
+    //  blockStatsCbf = BlockStatistic::TU_CBF_CR;
+    //  blockStatsCoeff = BlockStatistic::TU_COEFF_ENERGY_CR;
+    //  break;
+    default:
+      break;
+    }
+
+    const int nrCoeff = tuRect.width * tuRect.height;
+    int64_t e = 0;
+    for (int i = 0; i < nrCoeff; i++)
+    {
+      e += pcCoeff[i] * pcCoeff[i];
+    }
+    if (e > 1000)
+      e = 1000;
+
+    if (compID == COMPONENT_Y)
+    {
+      DTRACE_BLOCK_SCALAR(pcCU->getSlice()->getPOC(), tuRect.x0 + pcCU->getCUPelX(), tuRect.y0 + pcCU->getCUPelY(), tuRect.width, tuRect.height, GetBlockStatisticName(blockStatsCbf), pcCU->getCbf(absPartIdxTU, compID, uiTrMode));
+      DTRACE_BLOCK_SCALAR(pcCU->getSlice()->getPOC(), tuRect.x0 + pcCU->getCUPelX(), tuRect.y0 + pcCU->getCUPelY(), tuRect.width, tuRect.height, GetBlockStatisticName(blockStatsCoeff), int(e));
+    }
+#endif
 
     if(pcCU->getCbf(absPartIdxTU, compID, uiTrMode) != 0)
     {

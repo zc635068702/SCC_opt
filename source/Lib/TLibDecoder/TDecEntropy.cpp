@@ -39,6 +39,10 @@
 #include "TLibCommon/TComTU.h"
 #include "TLibCommon/TComPrediction.h"
 
+#if K0149_BLOCK_STATISTICS
+#include "TLibCommon/dtrace_blockstatistics.h"
+#endif
+
 #if ENVIRONMENT_VARIABLE_DEBUG_AND_TEST
 #include "../TLibCommon/Debug.h"
 static const Bool bDebugRQT = DebugOptionList::DebugRQT.getInt()!=0;
@@ -289,8 +293,14 @@ Void TDecEntropy::decodePUWise( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDept
         if ( pcCU->getSlice()->getNumRefIdx( RefPicList( uiRefListIdx ) ) > 0 )
         {
           decodeRefFrmIdxPU( pcCU,    uiSubPartIdx,              uiDepth, uiPartIdx, RefPicList( uiRefListIdx ) );
+#if MVP_MVD_DECODE
+          Int MVPIdx = decodeMVPIdxPUOnly ( pcSubCU, uiSubPartIdx-uiAbsPartIdx, uiDepth, uiPartIdx, RefPicList( uiRefListIdx ));
+          decodeMvdPU      ( pcCU,    uiSubPartIdx,              uiDepth, uiPartIdx, RefPicList( uiRefListIdx ));
+          decodeMVPIdxPU   ( pcSubCU, uiSubPartIdx-uiAbsPartIdx, uiDepth, uiPartIdx, RefPicList( uiRefListIdx ), pcCU, MVPIdx );
+#else
           decodeMvdPU      ( pcCU,    uiSubPartIdx,              uiDepth, uiPartIdx, RefPicList( uiRefListIdx ) );
           decodeMVPIdxPU   ( pcSubCU, uiSubPartIdx-uiAbsPartIdx, uiDepth, uiPartIdx, RefPicList( uiRefListIdx ), pcCU );
+#endif
 #if ENVIRONMENT_VARIABLE_DEBUG_AND_TEST
           if (bDebugPredEnabled)
           {
@@ -388,7 +398,29 @@ Void TDecEntropy::decodeMvdPU( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth
   }
 }
 
+#if PMVP_PRINT_DEC
+UInt EG0Bits( Int iVal )
+{
+  assert(iVal != std::numeric_limits<Int>::min());
+  UInt uiLength = 1;
+  UInt uiTemp = (iVal <= 0) ? (UInt(-iVal) << 1) + 1 : UInt(iVal << 1);
+
+  while ( uiTemp > 256 )
+  {
+    uiTemp >>= 8;
+    uiLength += 8;
+  }
+  uiLength += g_uhPaletteTBC[uiTemp];
+  uiLength = 2 * uiLength - 1;
+  return uiLength;
+}
+#endif
+
+#if MVP_MVD_DECODE
+Void TDecEntropy::decodeMVPIdxPU( TComDataCU* pcSubCU, UInt uiPartAddr, UInt uiDepth, UInt uiPartIdx, RefPicList eRefList, TComDataCU* pcCU, Int MVPIdx )
+#else
 Void TDecEntropy::decodeMVPIdxPU( TComDataCU* pcSubCU, UInt uiPartAddr, UInt uiDepth, UInt uiPartIdx, RefPicList eRefList, TComDataCU* pcCU )
+#endif
 {
   Int iMVPIdx = -1;
 
@@ -402,10 +434,14 @@ Void TDecEntropy::decodeMVPIdxPU( TComDataCU* pcSubCU, UInt uiPartAddr, UInt uiD
   iRefIdx = pcSubCUMvField->getRefIdx(uiPartAddr);
   cMv = cZeroMv;
 
+#if MVP_MVD_DECODE
+  iMVPIdx = MVPIdx;
+#else
   if ( (pcSubCU->getInterDir(uiPartAddr) & ( 1 << eRefList )) )
   {
     m_pcEntropyDecoderIf->parseMVPIdx( iMVPIdx );
   }
+#endif
   pcSubCU->fillMvpCand(uiPartIdx, uiPartAddr, eRefList, iRefIdx, pAMVPInfo);
 #if MCTS_ENC_CHECK
   if ((iRefIdx >= 0) && m_pConformanceCheck->getTMctsCheck() && pcSubCU->isLastColumnCTUInTile() && (iMVPIdx == pAMVPInfo->numSpatialMVPCandidates))
@@ -414,9 +450,76 @@ Void TDecEntropy::decodeMVPIdxPU( TComDataCU* pcSubCU, UInt uiPartAddr, UInt uiD
   }
 #endif
   pcSubCU->setMVPNumSubParts(pAMVPInfo->iN, eRefList, uiPartAddr, uiPartIdx, uiDepth);
+#if MVP_MVD_DECODE == 0
   pcSubCU->setMVPIdxSubParts( iMVPIdx, eRefList, uiPartAddr, uiPartIdx, uiDepth );
+#endif
   if ( iRefIdx >= 0 )
   {
+#if PMVP_ON
+    if ( pcSubCU->getSlice()->getRefPic( eRefList, iRefIdx )->getPOC() == pcSubCU->getSlice()->getPOC() )
+    {
+      Int xPUPos, yPUPos, width, height;
+      // get PU position
+      pcSubCU->getPartPosition(uiPartIdx, xPUPos, yPUPos, width, height);
+#if PMVP_PRINT_DEC
+      std::cout << std::setw(uiDepth * 2 + 5) << "PU=" << xPUPos << "," << yPUPos << "," << width << "," << height;
+      std::cout << " Part=" << uiPartIdx + 1;
+      std::cout << " MVP=" << iMVPIdx;
+#endif
+      if (iMVPIdx == 2) // PMVP
+      {
+#if MVP_MVD_DECODE == 0
+        UInt uiMVPPosIdx = 0;
+        // obtain prediction postion by position index
+        m_pcEntropyDecoderIf->parseMVPPosIdx(uiMVPPosIdx, m_uiMVPPosNum);
+        TComMv posPred = getMVPPosPred(uiMVPPosIdx);
+#else
+        TComMv posPred = getMVPPosPred(m_uiMVPPosIdx);
+#endif
+        TComMv mvd = pcSubCUMvField->getMvd( uiPartAddr );
+        TComMv posPU(xPUPos, yPUPos);
+#if PMVP_PRINT_DEC
+        std::cout << " posIdx=" << m_uiMVPPosIdx << "/" << m_uiMVPPosNum;
+        std::cout << " posPred=" << posPred.getHor() << "," << posPred.getVer();
+        std::cout << " posMvd=" << mvd.getHor() << "," << mvd.getVer();
+#endif
+        cMv = mvd + posPred - posPU;
+        cMv <<= 2;
+#if PMVP_CACHE_MVD_THRESH
+        if (mvd.getAbsHor() + mvd.getAbsVer() >=PMVP_CACHE_MVD_THRESH)
+#endif
+          addMVPPosPred(xPUPos, yPUPos); // add PU position into PMVP list
+      }
+      else
+      {
+        m_pcPrediction->getMvPredAMVP( pcSubCU, uiPartIdx, uiPartAddr, eRefList, cMv);
+        cMv >>= 2;
+        cMv += pcSubCUMvField->getMvd( uiPartAddr );
+        Int xRefPos = xPUPos + cMv.getHor();
+        Int yRefPos = yPUPos + cMv.getVer();
+        cMv <<= 2;
+        addMVPPosPred(xPUPos, yPUPos);
+        addMVPPosPred(xRefPos, yRefPos);
+      }
+#if PMVP_PRINT_DEC
+      std::cout << " MV=" << cMv.getHor() << "," << cMv.getVer() << "\n";
+#endif
+    }
+    else
+    {
+      m_pcPrediction->getMvPredAMVP( pcSubCU, uiPartIdx, uiPartAddr, eRefList, cMv);
+      if( pcSubCU->getSlice()->getUseIntegerMv() )
+      {
+        cMv >>= 2;
+        cMv += pcSubCUMvField->getMvd( uiPartAddr );
+        cMv <<= 2;
+      }
+      else
+      {
+        cMv += pcSubCUMvField->getMvd( uiPartAddr );
+      }
+    }
+#else
     m_pcPrediction->getMvPredAMVP( pcSubCU, uiPartIdx, uiPartAddr, eRefList, cMv);
     if( pcSubCU->getSlice()->getUseIntegerMv() || (pcSubCU->getSlice()->getRefPic( eRefList, iRefIdx )->getPOC() == pcSubCU->getSlice()->getPOC()) )
     {
@@ -428,11 +531,37 @@ Void TDecEntropy::decodeMVPIdxPU( TComDataCU* pcSubCU, UInt uiPartAddr, UInt uiD
     {
       cMv += pcSubCUMvField->getMvd( uiPartAddr );
     }
+#endif
   }
 
   PartSize ePartSize = pcSubCU->getPartitionSize( uiPartAddr );
   pcSubCU->getCUMvField( eRefList )->setAllMv(cMv, ePartSize, uiPartAddr, 0, uiPartIdx);
 }
+
+#if MVP_MVD_DECODE
+Int TDecEntropy::decodeMVPIdxPUOnly( TComDataCU * pcSubCU, UInt uiPartAddr, UInt uiDepth, UInt uiPartIdx, RefPicList eRefList )
+{
+  Int iMVPIdx = -1;
+
+  if ((pcSubCU->getInterDir(uiPartAddr) & (1 << eRefList)))
+  {
+    m_pcEntropyDecoderIf->parseMVPIdx(iMVPIdx);
+  }
+
+  pcSubCU->setMVPIdxSubParts(iMVPIdx, eRefList, uiPartAddr, uiPartIdx, uiDepth);
+
+#if PMVP_ON
+  Int    iRefIdx = -1;
+  TComCUMvField* pcSubCUMvField = pcSubCU->getCUMvField(eRefList);
+  iRefIdx = pcSubCUMvField->getRefIdx(uiPartAddr);
+
+  if (iRefIdx >= 0 && pcSubCU->getSlice()->getRefPic(eRefList, iRefIdx)->getPOC() == pcSubCU->getSlice()->getPOC() && iMVPIdx == 2)
+    m_pcEntropyDecoderIf->parseMVPPosIdx(m_uiMVPPosIdx, m_uiMVPPosNum);
+#endif
+
+  return iMVPIdx;
+}
+#endif
 
 Void TDecEntropy::xDecodeTransform        ( Bool& bCodeDQP, Bool& isChromaQpAdjCoded, TComTU &rTu, const Int quadtreeTULog2MinSizeInCU )
 {

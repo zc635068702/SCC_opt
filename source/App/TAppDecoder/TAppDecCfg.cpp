@@ -181,6 +181,20 @@ Bool TAppDecCfg::parseCfg( Int argc, TChar* argv[] )
     }
   }
 
+#if K0149_BLOCK_STATISTICS
+  std::string statisticFileName;
+  if (m_reconFileName.empty())
+  {
+    statisticFileName = "TraceBlockStatisticDec.vtmbmsstats";
+  }
+  else
+  {
+    statisticFileName = m_reconFileName;
+    statisticFileName.replace(statisticFileName.find(".yuv"), 4, ".vtmbmsstats");
+  }
+  g_hStatisticTrace = fopen(statisticFileName.c_str(), "wb");
+#endif
+
   return true;
 }
 

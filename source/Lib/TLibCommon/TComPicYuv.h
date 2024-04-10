@@ -44,6 +44,11 @@
 #include "TComChromaFormat.h"
 #include "SEI.h"
 
+#if TEXT_CODEC
+#include <opencv2/opencv.hpp>
+#include "Utilities/displacement.h"
+#endif
+
 //! \ingroup TLibCommon
 //! \{
 
@@ -165,6 +170,11 @@ public:
 
   //  Dump picture
   Void          dump              (const std::string &fileName, const BitDepths &bitDepths, const Bool bAppend=false, const Bool bForceTo8Bit=false) const ;
+
+#if TEXT_CODEC
+  void          dumpYuvToMat444   (std::vector<cv::Mat>& cvMatYuvPlanes, int bitDepths[MAX_NUM_COMPONENT], const bool bForceTo8Bit=true);
+  void          xyuvLayerAndStitch(TComPicYuv *picText, DisplacementParameterSet* dps, const bool layerFlag, const ChromaFormat chromaFormat);
+#endif
 
   // Set border extension flag
   Void          setBorderExtension(Bool b) { m_bIsBorderExtended = b; }

@@ -51,6 +51,10 @@
 #include "TEncCfg.h"
 #include "TLibCommon/TComHash.h"
 
+#if IBC_ME_FROM_VTM
+#include "IbcHashMap.h"
+#endif
+
 //! \ingroup TLibEncoder
 //! \{
 
@@ -109,6 +113,10 @@ protected:
   MESearchMethod  m_motionEstimationSearchMethod;
   Int             m_aaiAdaptSR[MAX_NUM_REF_LIST_ADAPT_SR][MAX_IDX_ADAPT_SR];
   TComMv          m_acMvPredictors[NUM_MV_PREDICTORS]; // Left, Above, AboveRight. enum MVP_DIR first NUM_MV_PREDICTORS entries are suitable for accessing.
+#if PMVP_ON
+  UInt            m_uiMVPPosNum;
+  TComMv          m_acMVPPosPred[PMVP_LIST_MAX];
+#endif
 
   // RD computation
   TEncSbac***     m_pppcRDSbacCoder;
@@ -241,6 +249,24 @@ protected:
   Void xGetInterPredictionError( TComDataCU* pcCU, TComYuv* pcYuvOrg, Int iPartIdx, Distortion& ruiSAD, Bool Hadamard );
 
 public:
+#if PMVP_ON
+  Void  addMVPPosPred(Int posX, Int posY) {
+    m_acMVPPosPred[m_uiMVPPosNum++] = TComMv(posX, posY);
+  }
+  Void  resetMVPPosPred( )                { m_uiMVPPosNum = 0; }
+  UInt  getMVPPosNum( )                   { return m_uiMVPPosNum; }
+  TComMv getMVPPosPred( UInt uiIdx )      { return m_acMVPPosPred[uiIdx]; }
+  Void  setMVPPosNum( UInt num )          { m_uiMVPPosNum = num; }
+  UInt  xGetExpGolombNumberOfBits ( Int iVal );
+  Void  getPmvpPredList           (Int posX, Int posY, Int& idx, Int& bits);
+  Void  getPmvpPredArea           (TComDataCU* pcCU, Int posX, Int posY, Int& idx, Int& bits);
+  Void  getPmvpPredLUT            (TComDataCU* pcCU, Int posX, Int posY, Int& idx, Int& bits);
+  Void  getPmvpPredFast           (TComDataCU* pcCU, Int posX, Int posY, Int& idx, Int& bits);
+  Void  getIbcMvpPred             (TComDataCU* pcCU, TComMv* mvCand, Int mvX, Int mvY, Int puX, Int puY, Int& idx, Int& bits);
+  Distortion getCostIbcAmvpPred   (TComDataCU* pcCU, Int mvX, Int mvY, Int puX, Int puY);
+  Distortion getCostIbcPmvpPred   (TComDataCU* pcCU, Int mvX, Int mvY, Int puX, Int puY);
+#endif
+
   Void  estIntraPredLumaQT      ( TComDataCU* pcCU,
                                   TComYuv*    pcOrgYuv,
                                   TComYuv*    pcPredYuv,
@@ -327,6 +353,10 @@ public:
                                   Bool        bUse1DSearchFor8x8,
                                   Bool        bUseRes,
                                   Bool        testOnlyPred
+#if IBC_ME_FROM_VTM
+                                  ,
+                                  IbcHashMap& ibcHashMap
+#endif
                                 );
 
   Bool predMixedIntraBCInterSearch( TComDataCU* pcCU,
@@ -490,6 +520,10 @@ public:
                                 Int height,
                                 Bool isRec
                               );
+
+#if IBC_ME_FROM_VTM
+  void xxIBCHashSearch(TComDataCU* pcCU, TComYuv* pcYuvOrg, int partIdx, TComMv* pcMvPred, TComMv& rcMv, int& idxMvPred, IbcHashMap& ibcHashMap);
+#endif
 
   Void xIntraBCHashSearch     ( TComDataCU* pcCU,
                                 TComYuv* pcYuvOrg,

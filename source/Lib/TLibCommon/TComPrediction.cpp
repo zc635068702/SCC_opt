@@ -494,6 +494,44 @@ Bool TComPrediction::xCheckIdenticalMotion ( TComDataCU* pcCU, UInt PartAddr )
   return false;
 }
 
+#if TEXT_CODEC_MERGE
+Void ColorCopy(const UInt comp, const int *bgColor, Pel *dst, Int dstStride, Int width, Int height)
+{
+  for (Int row = 0; row < height; row++)
+  {
+    for (Int col = 0; col < width; col++)
+    {
+      dst[col] = bgColor[comp];
+    }
+    dst += dstStride;
+  }
+}
+
+Void xPredInterBgBlk(const ComponentID compID, TComPicYuv *refPic, UInt partAddr, Int width, Int height, TComYuv *dstPic, const int *bgColor)
+{
+  Int     dstStride  = dstPic->getStride(compID);
+  Pel*    dst = dstPic->getAddr( compID, partAddr );
+
+  UInt    cxWidth  = width  >> refPic->getComponentScaleX(compID);
+  UInt    cxHeight = height >> refPic->getComponentScaleY(compID);
+
+  ColorCopy(UInt(compID), bgColor, dst, dstStride, cxWidth, cxHeight);
+}
+
+Void xPredInterBg(TComDataCU* pcCU, UInt uiPartAddr, Int iWidth, Int iHeight, RefPicList eRefPicList, TComYuv* pcYuvPred, const int *bgColor)
+{
+  Int         iRefIdx     = pcCU->getCUMvField( eRefPicList )->getRefIdx( uiPartAddr );           assert (iRefIdx >= 0);
+  TComMv      cMv         = pcCU->getCUMvField( eRefPicList )->getMv( uiPartAddr );
+  pcCU->clipMv(cMv);
+
+  for (UInt comp = COMPONENT_Y; comp < pcYuvPred->getNumberValidComponents(); comp++)
+  {
+    const ComponentID compID = ComponentID(comp);
+    xPredInterBgBlk(compID, pcCU->getSlice()->getRefPic(eRefPicList, iRefIdx)->getPicYuvRec(), uiPartAddr, iWidth, iHeight, pcYuvPred, bgColor);
+  }
+}
+#endif
+
 Void TComPrediction::motionCompensation ( TComDataCU* pcCU, TComYuv* pcYuvPred, RefPicList eRefPicList, Int iPartIdx )
 {
   Int         iWidth;
@@ -502,6 +540,16 @@ Void TComPrediction::motionCompensation ( TComDataCU* pcCU, TComYuv* pcYuvPred, 
   const TComSlice *pSlice    = pcCU->getSlice();
   const SliceType  sliceType = pSlice->getSliceType();
   const TComPPS   &pps       = *(pSlice->getPPS());
+
+#if TEXT_CODEC_MERGE
+  if (pcCU->getMergeFlag(0) && pcCU->getMergeIndex(0) == TEXT_CODEC_MERGE_FLAG && pcCU->getSlice()->getSPS()->getBgColor() != NULL)
+  {
+    pcCU->getPartIndexAndSize(iPartIdx, uiPartAddr, iWidth, iHeight);
+    xPredInterBg(pcCU, uiPartAddr, iWidth, iHeight, REF_PIC_LIST_0, pcYuvPred, pSlice->getSPS()->getBgColor());
+
+    return;
+  }
+#endif
 
   if ( iPartIdx >= 0 )
   {

@@ -130,6 +130,13 @@ private:
   Bool                    m_bRGBformat;
   Bool                    m_useColourTrans;
   Bool                    m_useLL;
+#if 1 // TEXT_CODEC
+  Bool                    m_backgroundLayerFlag = true;
+#endif
+#if IBC_MVD_ADAPT_RESOLUTION
+  UInt                    mvdPrecHor = 0;
+  UInt                    mvdPrecVer = 0;
+#endif
 
 public:
   TComRdCost();
@@ -173,6 +180,9 @@ public:
       m_mvPredictors[i] = pcMv[i];
     }
   }
+#if PMVP_ON
+  TComMv* getPredictors() { return m_mvPredictors; }
+#endif
 
   __inline Distortion getCostMultiplePreds( Int x, Int y )
   {
@@ -196,11 +206,97 @@ public:
 
     if(absCand[0] < absCand[1] )
     {
+#if IBC_MVD_ADAPT_RESOLUTION
+#if LAYERED_IBC_MVD == 0
+      m_backgroundLayerFlag = false;
+#endif
+      if (m_backgroundLayerFlag == false)
+      {
+#if IBC_MVD_ADAPT_RESOLUTION == 1
+        bool mvd32PelFlag = !(rmvH[0] & ((1 << mvdPrecHor) - 1)) && !(rmvV[0] & ((1 << mvdPrecVer) - 1));
+        if (mvd32PelFlag)
+        {
+          rmvH[0] >>= mvdPrecHor;
+          rmvV[0] >>= mvdPrecVer;
+        }
+        return getIComponentBits(rmvH[0]) + getIComponentBits(rmvV[0]) + 1;
+#elif IBC_MVD_ADAPT_RESOLUTION == 2
+        bool mvd32PelFlagHor = !(rmvH[0] & ((1 << mvdPrecHor) - 1));
+        bool mvd32PelFlagVer = !(rmvV[0] & ((1 << mvdPrecVer) - 1));
+        if (mvd32PelFlagHor)
+        {
+          rmvH[0] >>= mvdPrecHor;
+        }
+        if (mvd32PelFlagVer)
+        {
+          rmvV[0] >>= mvdPrecVer;
+        }
+        return getIComponentBits(rmvH[0]) + getIComponentBits(rmvV[0]) + 2;
+#elif IBC_MVD_ADAPT_RESOLUTION == 3
+        int absHor = rmvH[0] > 0 ? rmvH[0] : -rmvH[0];
+        int absVer = rmvV[0] > 0 ? rmvV[0] : -rmvV[0];
+        int absHorLsb = absHor & ((1 << mvdPrecHor) - 1);
+        int absVerLsb = absVer & ((1 << mvdPrecVer) - 1);
+        int absHorMsb = absHor >>= mvdPrecHor;
+        int absVerMsb = absVer >>= mvdPrecVer;
+
+        return getIComponentBits(absHorLsb >> 1) + getIComponentBits(absVerLsb >> 1) + getIComponentBits(absHorMsb >> 1) + getIComponentBits(absVerMsb >> 1);
+#else
+        return getIComponentBits(rmvH[0]) + getIComponentBits(rmvV[0]);
+#endif
+      }
+      else
+        return getIComponentBits(rmvH[0]) + getIComponentBits(rmvV[0]);
+#else
       return getIComponentBits(rmvH[0]) + getIComponentBits(rmvV[0]);
+#endif
     }
     else
     {
+#if IBC_MVD_ADAPT_RESOLUTION
+#if LAYERED_IBC_MVD == 0
+      m_backgroundLayerFlag = false;
+#endif
+      if (m_backgroundLayerFlag == false)
+      {
+#if IBC_MVD_ADAPT_RESOLUTION == 1
+        bool mvd32PelFlag = !(rmvH[1] & ((1 << mvdPrecHor) - 1)) && !(rmvV[1] & ((1 << mvdPrecVer) - 1));
+        if (mvd32PelFlag)
+        {
+          rmvH[1] >>= mvdPrecHor;
+          rmvV[1] >>= mvdPrecVer;
+        }
+        return getIComponentBits(rmvH[1]) + getIComponentBits(rmvV[1]) + 1;
+#elif IBC_MVD_ADAPT_RESOLUTION == 2
+        bool mvd32PelFlagHor = !(rmvH[1] & ((1 << mvdPrecHor) - 1));
+        bool mvd32PelFlagVer = !(rmvV[1] & ((1 << mvdPrecVer) - 1));
+        if (mvd32PelFlagHor)
+        {
+          rmvH[1] >>= mvdPrecHor;
+        }
+        if (mvd32PelFlagVer)
+        {
+          rmvV[1] >>= mvdPrecVer;
+        }
+        return getIComponentBits(rmvH[1]) + getIComponentBits(rmvV[1]) + 2;
+#elif IBC_MVD_ADAPT_RESOLUTION == 3
+        int absHor = rmvH[1] > 0 ? rmvH[1] : -rmvH[1];
+        int absVer = rmvV[1] > 0 ? rmvV[1] : -rmvV[1];
+        int absHorLsb = absHor & ((1 << mvdPrecHor) - 1);
+        int absVerLsb = absVer & ((1 << mvdPrecVer) - 1);
+        int absHorMsb = absHor >>= mvdPrecHor;
+        int absVerMsb = absVer >>= mvdPrecVer;
+
+        return getIComponentBits(absHorLsb >> 1) + getIComponentBits(absVerLsb >> 1) + getIComponentBits(absHorMsb >> 1) + getIComponentBits(absVerMsb >> 1);
+#else
+        return getIComponentBits(rmvH[1]) + getIComponentBits(rmvV[1]);
+#endif
+      }
+      else
+        return getIComponentBits(rmvH[1]) + getIComponentBits(rmvV[1]);
+#else
       return getIComponentBits(rmvH[1]) + getIComponentBits(rmvV[1]);
+#endif
     }
   }
 
@@ -239,6 +335,13 @@ public:
     return xGetExpGolombNumberOfBits((x << m_iCostScale) - m_mvPredictor.getHor())
     +      xGetExpGolombNumberOfBits((y << m_iCostScale) - m_mvPredictor.getVer());
   }
+#if TEXT_CODEC
+  Void      setLayerFlag  (Bool   b)          { m_backgroundLayerFlag = b; }
+#endif
+#if IBC_MVD_ADAPT_RESOLUTION
+  Void      setMvdPrecHor (UInt   i)          { mvdPrecHor = i;       }
+  Void      setMvdPrecVer (UInt   i)          { mvdPrecVer = i;       }
+#endif
 
 private:
 

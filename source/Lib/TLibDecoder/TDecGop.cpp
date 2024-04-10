@@ -264,4 +264,25 @@ static Void calcAndPrintHashStatus(TComPicYuv& pic, const SEIDecodedPictureHash*
     printf("[rx%s:%s] ", hashType, hashToString(pictureHashSEI->m_pictureHash, numChar).c_str());
   }
 }
+
+#if TEXT_CODEC
+Void TDecGop::yuvStitch( TComPic* pcPic, const InputColourSpaceConversion snr_conversion )
+{
+  TComPicYuv *picd=0;
+  if (snr_conversion!=IPCOLOURSPACE_UNCHANGED)
+  {
+    cout << "TEXT_CODEC does not support snr_conversion!=IPCOLOURSPACE_UNCHANGED" << endl;
+    abort();
+  }
+  else
+  {
+    picd = pcPic->getPicYuvRec();
+    assert(picd != NULL);
+  }
+
+  TComPicYuv *picdText = getTextLayerRec();
+  // yuv stitch
+  picd->xyuvLayerAndStitch(picdText, dps, false, picdText->getChromaFormat());
+}
+#endif
 //! \}

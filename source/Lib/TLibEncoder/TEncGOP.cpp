@@ -118,6 +118,9 @@ Void  TEncGOP::create()
 {
   m_bLongtermTestPictureHasBeenCoded = 0;
   m_bLongtermTestPictureHasBeenCoded2 = 0;
+#if CNN_FILTERING
+  m_pcCNNFilter = new TEncCNNFilter;
+#endif
 }
 
 Void  TEncGOP::destroy()
@@ -128,6 +131,14 @@ Void  TEncGOP::destroy()
     delete m_pcDeblockingTempPicYuv;
     m_pcDeblockingTempPicYuv = NULL;
   }
+#if CNN_FILTERING
+  if (m_pcCNNFilter)
+  {
+    m_pcCNNFilter->destroy();
+    delete m_pcCNNFilter;
+    m_pcCNNFilter = NULL;
+  }
+#endif
 }
 
 Void TEncGOP::init ( TEncTop* pcTEncTop )
@@ -154,6 +165,10 @@ Void TEncGOP::init ( TEncTop* pcTEncTop )
     m_hasLosslessPSNR[i] = false;
     m_losslessPSNR[i] = 999.99;
   }
+
+#if 0 // CNN_FILTERING
+  m_pcCNNFilter->create(m_pcCfg->getSourceWidth(), m_pcCfg->getSourceHeight(), m_pcCfg->getChromaFormatIdc(), m_pcCfg->getMaxCUWidth(), m_pcCfg->getMaxCUHeight(), m_pcCfg->getMaxTotalCUDepth());
+#endif
 }
 
 #if MCTS_EXTRACTION
@@ -192,8 +207,18 @@ Int TEncGOP::xWriteSPS (AccessUnit &accessUnit, const TComSPS *sps)
   m_pcEntropyCoder->encodeSPS(sps);
   accessUnit.push_back(new NALUnitEBSP(nalu));
   return (Int)(accessUnit.back()->m_nalUnitData.str().size()) * 8;
-
 }
+
+#if TEXT_CODEC
+Int TEncGOP::xWriteSPSHgtWdt (AccessUnit &accessUnit, const TComSPS *sps)
+{
+  OutputNALUnit nalu(NAL_UNIT_SPS);
+  m_pcEntropyCoder->setBitstream(&nalu.m_Bitstream);
+  m_pcEntropyCoder->encodeSPSHgtWdt(sps);
+  accessUnit.push_back(new NALUnitEBSP(nalu));
+  return (Int)(accessUnit.back()->m_nalUnitData.str().size()) * 8;
+}
+#endif
 
 Int TEncGOP::xWritePPS (AccessUnit &accessUnit, const TComPPS *pps)
 {
@@ -225,6 +250,21 @@ Int TEncGOP::xWriteParameterSets (AccessUnit &accessUnit, TComSlice *slice, cons
 
   return actualTotalBits;
 }
+
+#if TEXT_CODEC
+Int TEncGOP::xWriteParameterSetsOfTextSCC (AccessUnit &accessUnit, TComSlice *slice, const Bool bSeqFirst)
+{
+  Int actualTotalBits = 0;
+
+  if (m_pcEncTop->SPSNeedsWriting(slice->getSPS()->getSPSId())) // Note this assumes that all changes to the SPS are made at the TEncTop level prior to picture creation (TEncTop::xGetNewPicBuffer).
+  {
+    assert(bSeqFirst); // Implementations that use more than 1 SPS need to be aware of activation issues.
+    actualTotalBits += xWriteSPSHgtWdt(accessUnit, slice->getSPS());
+  }
+
+  return actualTotalBits;
+}
+#endif
 
 Void TEncGOP::xWriteAccessUnitDelimiter (AccessUnit &accessUnit, TComSlice *slice)
 {
@@ -1241,6 +1281,9 @@ Void TEncGOP::compressGOP( Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rc
   SEIMessages nestedSeiMessages;
   SEIMessages duInfoSeiMessages;
   SEIMessages trailingSeiMessages;
+#if TEXT_CODEC
+  SEIMessages trailingTextSCCSeiMessages;
+#endif
   std::deque<DUData> duData;
   SEIDecodingUnitInfo decodingUnitInfoSEI;
 
@@ -1840,6 +1883,27 @@ Void TEncGOP::compressGOP( Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rc
         applyDeblockingFilterMetric(pcPic, uiNumSliceSegments);
       }
     }
+
+#if 1 // TEXT_CODEC
+    Bool m_backgroundLayerFlag = pcSlice->getSPS()->getLayerFlag();
+#endif
+
+#if CNN_FILTERING
+#if LAYERED_CNN_FILTER
+    if (m_backgroundLayerFlag == false)
+#endif
+    {
+      /*
+      for (int s = 0; s < uiNumSliceSegments; s++)
+      {
+        pcPic->getSlice(s)->setDeblockingFilterDisable(true);
+      }
+      */
+      m_pcCNNFilter->initFilter(pcPic->getSlice(0)->getSliceQp());
+      m_pcCNNFilter->cnnFilter( pcPic ); // piPic
+    }
+#endif
+
     m_pcLoopFilter->loopFilterPic( pcPic );
 
     /////////////////////////////////////////////////////////////////////////////////////////////////// File writing
@@ -1854,7 +1918,20 @@ Void TEncGOP::compressGOP( Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rc
     {
       m_pcEncTop->setParamSetChanged(pcSlice->getSPS()->getSPSId(), pcSlice->getPPS()->getPPSId());
     }
+#if TEXT_CODEC
+    Bool textSCCFlag = pcSlice->getSPS()->getTextSCCFlag();
+    if (iPOCLast == 0 && m_backgroundLayerFlag && textSCCFlag)
+      actualTotalBits += xWriteParameterSetsOfTextSCC(accessUnit, pcSlice, writePS);
+    else
+#endif
     actualTotalBits += xWriteParameterSets(accessUnit, pcSlice, writePS);
+#if 0 // TEXT_CODEC
+    if (textSCCFlag == false && m_backgroundLayerFlag == false)
+    {
+      iNumPicRcvd --;
+      goto TextSCC_flag;
+    }
+#endif
 
     if (writePS)
 #else
@@ -2083,10 +2160,15 @@ Void TEncGOP::compressGOP( Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rc
 
     m_pcCfg->setEncodedFlag(iGOPid, true);
 
+#if TEXT_CODEC
+    // (0) or (m_pcCfg->getTextSCCFlag() && m_backgroundLayerFlag)
+    if (textSCCFlag && m_backgroundLayerFlag)
+      yuvStitch( pcPic, snr_conversion );
+#endif
     Double PSNR_Y;
 
     xCalculateAddPSNRs( isField, isTff, iGOPid, pcPic, accessUnit, rcListPic, dEncTime, ip_conversion, snr_conversion, outputLogCtrl, &PSNR_Y );
-    
+
     // Only produce the Green Metadata SEI message with the last picture.
     if( m_pcCfg->getSEIGreenMetadataInfoSEIEnable() && pcSlice->getPOC() == ( m_pcCfg->getFramesToBeEncoded() - 1 )  )
     {
@@ -2095,6 +2177,17 @@ Void TEncGOP::compressGOP( Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rc
       trailingSeiMessages.push_back(seiGreenMetadataInfo);
     }
     
+#if TEXT_CODEC
+    if (textSCCFlag && m_backgroundLayerFlag == false)
+    {
+      SEITextSCCInfo *seiTextSCCInfo = new SEITextSCCInfo;
+      m_seiEncoder.initSEITextSCCInfo(seiTextSCCInfo);
+      trailingTextSCCSeiMessages.push_back(seiTextSCCInfo);
+
+      xWriteTrailingSEIMessages(trailingTextSCCSeiMessages, accessUnit, pcSlice->getTLayer(), pcSlice->getSPS());
+    }
+#endif
+
     xWriteTrailingSEIMessages(trailingSeiMessages, accessUnit, pcSlice->getTLayer(), pcSlice->getSPS());
     
     printHash(m_pcCfg->getDecodedPictureHashSEIType(), digestStr);
@@ -2165,6 +2258,9 @@ Void TEncGOP::compressGOP( Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rc
 #endif
   } // iGOPid-loop
 
+#if 0 // TEXT_CODEC
+  TextSCC_flag :
+#endif
   delete pcBitstreamRedirect;
 
   assert ( (m_iNumPicCoded == iNumPicRcvd) );
@@ -2345,6 +2441,30 @@ UInt64 TEncGOP::xFindDistortionFrame (TComPicYuv* pcPic0, TComPicYuv* pcPic1, co
 
   return uiTotalDiff;
 }
+
+#if TEXT_CODEC
+Void TEncGOP::yuvStitch( TComPic* pcPic, const InputColourSpaceConversion snr_conversion )
+{
+  if (snr_conversion!=IPCOLOURSPACE_UNCHANGED)
+  {
+    cout << "TEXT_CODEC does not support snr_conversion!=IPCOLOURSPACE_UNCHANGED" << endl;
+    abort();
+  }
+  else
+  {
+    // original yuv copy
+    TComPicYuv* m_pcOrgBuffer = getOrgBuffer();
+    m_pcOrgBuffer->copyToPic(pcPic->getPicYuvOrg());
+    delete m_pcOrgBuffer;
+    m_pcOrgBuffer = NULL;
+  }
+
+  TComPicYuv *picd = pcPic->getPicYuvRec();
+  TComPicYuv *picdText = getTextLayerRec();
+  // rec yuv stitch
+  picd->xyuvLayerAndStitch(picdText, dps, false, picdText->getChromaFormat());
+}
+#endif
 
 Void TEncGOP::xCalculateAddPSNRs( const Bool isField, const Bool isFieldTopFieldFirst, const Int iGOPid, TComPic* pcPic, const AccessUnit&accessUnit, TComList<TComPic*> &rcListPic, const Double dEncTime, const InputColourSpaceConversion ip_conversion, const InputColourSpaceConversion snr_conversion, const TEncAnalyze::OutputLogControl &outputLogCtrl, Double* PSNR_Y )
 {
@@ -2645,7 +2765,17 @@ Void TEncGOP::xCalculateAddPSNR( TComPic* pcPic, TComPicYuv* pcPicD, const Acces
     }
   }
 
+#if TEXT_CODEC
+  TComSlice*  pcSlice = pcPic->getSlice(0);
+  Bool m_backgroundLayerFlag = pcSlice->getSPS()->getLayerFlag();
+  UInt uibits;
+  if (pcSlice->getPOC() == 0 && m_backgroundLayerFlag)
+    uibits = numRBSPBytes * 8 + uibitsTextLayer;
+  else
+    uibits = numRBSPBytes * 8;
+#else
   UInt uibits = numRBSPBytes * 8;
+#endif
   m_vRVM_RP.push_back( uibits );
 
   //===== add distortion metrics =====
@@ -2656,7 +2786,9 @@ Void TEncGOP::xCalculateAddPSNR( TComPic* pcPic, TComPicYuv* pcPicD, const Acces
   m_ext360.addResult(m_gcAnalyzeAll);
 #endif
 
+#if !TEXT_CODEC
   TComSlice*  pcSlice = pcPic->getSlice(0);
+#endif
   if (pcSlice->isIntra())
   {
     m_gcAnalyzeI.addResult (result);

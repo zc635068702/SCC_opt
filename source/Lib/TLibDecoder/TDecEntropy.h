@@ -68,6 +68,9 @@ public:
 
   virtual Void  parseVPS                  ( TComVPS* pcVPS )     = 0;
   virtual Void  parseSPS                  ( TComSPS* pcSPS )     = 0;
+#if TEXT_CODEC
+  virtual Void  parseSPSHgtWdt            ( TComSPS* pcSPS )     = 0;
+#endif
   virtual Void  parsePPS                  ( TComPPS* pcPPS )     = 0;
 
   virtual Void parseSliceHeader          ( TComSlice* pcSlice, ParameterSetManager *parameterSetManager, const Int prevTid0POC)       = 0;
@@ -76,6 +79,9 @@ public:
   virtual Void parseRemainingBytes( Bool noTrailingBytesExpected ) = 0;
 
   virtual Void parseMVPIdx        ( Int& riMVPIdx ) = 0;
+#if PMVP_ON
+  virtual Void parseMVPPosIdx     ( UInt& ruiMVPPosIdx, UInt uiMaxSymbol ) = 0;
+#endif
 
 public:
   virtual Void parseSkipFlag      ( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth ) = 0;
@@ -130,6 +136,13 @@ private:
   //UInt    m_uiBakAbsPartIdx;
   //UInt    m_uiBakChromaOffset;
   //UInt    m_bakAbsPartIdxCU;
+#if PMVP_ON
+#if MVP_MVD_DECODE
+  UInt   m_uiMVPPosIdx;
+#endif
+  Int    m_uiMVPPosNum;
+  TComMv m_acMVPPosPred[PMVP_LIST_MAX];
+#endif
 
 public:
 #if MCTS_ENC_CHECK
@@ -141,7 +154,20 @@ public:
   Void decodeInterDirPU   ( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth, UInt uiPartIdx );
   Void decodeRefFrmIdxPU  ( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth, UInt uiPartIdx, RefPicList eRefList );
   Void decodeMvdPU        ( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth, UInt uiPartIdx, RefPicList eRefList );
+#if MVP_MVD_DECODE
+  Void decodeMVPIdxPU     ( TComDataCU* pcSubCU, UInt uiPartAddr, UInt uiDepth, UInt uiPartIdx, RefPicList eRefList, TComDataCU* pcCU, Int MVPIdx );
+  Int decodeMVPIdxPUOnly  ( TComDataCU* pcSubCU, UInt uiPartAddr, UInt uiDepth, UInt uiPartIdx, RefPicList eRefList );
+#else
   Void decodeMVPIdxPU     ( TComDataCU* pcSubCU, UInt uiPartAddr, UInt uiDepth, UInt uiPartIdx, RefPicList eRefList, TComDataCU* pcCU );
+#endif
+
+#if PMVP_ON
+  Void addMVPPosPred (Int posX, Int posY)  { m_acMVPPosPred[m_uiMVPPosNum++] = TComMv(posX, posY); }
+  Void resetMVPPosPred ( )                 { m_uiMVPPosNum = 0;            }
+  TComMv getMVPPosPred ( UInt uiIdx )      { return m_acMVPPosPred[uiIdx]; }
+  Void setMVPPosNum    ( UInt num )        { m_uiMVPPosNum = num;          }
+  UInt getMVPPosNum    ( )                 { return m_uiMVPPosNum;         }
+#endif
 
   Void    setEntropyDecoder           ( TDecEntropyIf* p );
   Void    setBitstream                ( TComInputBitstream* p ) { m_pcEntropyDecoderIf->setBitstream(p);                    }
@@ -149,6 +175,9 @@ public:
 
   Void    decodeVPS                   ( TComVPS* pcVPS ) { m_pcEntropyDecoderIf->parseVPS(pcVPS); }
   Void    decodeSPS                   ( TComSPS* pcSPS ) { m_pcEntropyDecoderIf->parseSPS(pcSPS); }
+#if TEXT_CODEC
+  Void    decodeSPSHgtWdt             ( TComSPS* pcSPS ) { m_pcEntropyDecoderIf->parseSPSHgtWdt(pcSPS); }
+#endif
   Void    decodePPS                   ( TComPPS* pcPPS ) { m_pcEntropyDecoderIf->parsePPS(pcPPS); }
   Void    decodeSliceHeader           ( TComSlice* pcSlice, ParameterSetManager *parameterSetManager, const Int prevTid0POC)  { m_pcEntropyDecoderIf->parseSliceHeader(pcSlice, parameterSetManager, prevTid0POC);         }
 

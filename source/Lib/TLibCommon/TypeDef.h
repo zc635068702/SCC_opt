@@ -46,12 +46,61 @@
 #include <utility>
 #include <iostream>
 
+#define TEXT_CODEC                                        1 // 0/1. default 1
+#define IBC_MVD_ADAPT_RESOLUTION                          2 // 0/1/2/3. default 2
+#define PMVP_ON                                           1 // 0/1. default 1
+#define MVP_MVD_DECODE                                    1 // 0/1. default 1
+#define CNN_FILTERING                                     1 // CNN-based inloop filtering for text region
+#define IBC_ME_FROM_VTM                                   1
+
 //! \ingroup TLibCommon
 //! \{
 
 // ====================================================================================================================
 // Debugging
 // ====================================================================================================================
+#define K0149_BLOCK_STATISTICS                            0 // enables block statistics, which can be analysed with YUView (https://github.com/IENT/YUView)
+#define PRINT_SPS_INFO                                    1
+
+#if TEXT_CODEC
+#define SELECT_TEXT_CODEC                                 1 // 0: always close, 1: select process, 2: always open. default 1
+#define LAYERED_DEC                                       0 // display text layer first, then background layer. default 0
+
+#define TEXT_CODEC_MERGE                                  1
+#if TEXT_CODEC_MERGE
+#define TEXT_CODEC_MERGE_FLAG                             2 // 0/1/2/5. optimal 2
+#define TEXT_CODEC_MERGE_EARLY_TERM                       0 // 0/1
+#define TEXT_CODEC_MERGE_EARLY_TERM_COST                  15000 // i,e, 10000, 20000 ...
+#define TEXT_CODEC_MERGE_PRINT                            0
+#endif
+#endif
+
+#if IBC_MVD_ADAPT_RESOLUTION
+#define LAYERED_IBC_MVD                                   1
+#if MVP_MVD_DECODE
+#define ADAPTIVE_IBC_MVD                                  1
+#endif
+#define MVD_PREC_HOR                                      0 // debug: 2
+#define MVD_PREC_VER                                      0 // debug: 2
+#endif
+
+#if PMVP_ON
+#define PMVP_PRINT_CU                                     0
+#define PMVP_PRINT_ENC                                    0
+#define PMVP_PRINT_DEC                                    0
+#define PMVP_LIST_MAX                                     65536
+#define PMVP_CACHE_MVD_THRESH                             0
+#define PMVP_AS_ME_CANDS                                  0
+#define PMVP_AS_ME_PREDS                                  1
+#define PMVP_AREA_SAERCH_RADIUS                           8
+#define PMVP_AREA_SAERCH_LUT                              80
+#define PMVP_AREA_SAERCH_LUT_SKIP                         32
+#endif
+
+#if CNN_FILTERING
+#define CNN_NUM_THREADS                                   1
+#define LAYERED_CNN_FILTER                                1
+#endif
 
 #define DEBUG_STRING                                      0 ///< When enabled, prints out final decision debug info at encoder and decoder
 #define DEBUG_ENCODER_SEARCH_BINS                         0 ///< When enabled, prints out each bin as it is coded during encoder search
@@ -327,6 +376,14 @@ enum ComponentID
   COMPONENT_Cr      = 2,
   MAX_NUM_COMPONENT = 3
 };
+
+#if CNN_FILTERING
+enum CnnlfInferBlockSize
+{
+  CNNLF_INFER_BLOCK_SIZE = 128,
+  PADDING_SIZE = 16
+};
+#endif
 
 enum InputColourSpaceConversion // defined in terms of conversion prior to input of encoder.
 {

@@ -1071,7 +1071,11 @@ Bool TAppEncCfg::parseCfg( Int argc, TChar* argv[] )
   ("ScalingList",                                     m_useScalingListId,                    SCALING_LIST_OFF, "0/off: no scaling list, 1/default: default scaling lists, 2/file: scaling lists specified in ScalingListFile")
   ("ScalingListFile",                                 m_scalingListFileName,                       string(""), "Scaling list file name. Use an empty string to produce help.")
   ("SignHideFlag,-SBH",                               m_signDataHidingEnabledFlag,                                    true)
+#if TEXT_CODEC_MERGE
+  ("MaxNumMergeCand",                                 m_maxNumMergeCand,                                   6u, "Maximum number of merge candidates")
+#else
   ("MaxNumMergeCand",                                 m_maxNumMergeCand,                                   5u, "Maximum number of merge candidates")
+#endif
   /* Misc. */
   ("SEIDecodedPictureHash",                           tmpDecodedPictureHashSEIMappedType,                   0, "Control generation of decode picture hash SEI messages\n"
                                                                                                                "\t3: checksum\n"
@@ -1381,6 +1385,11 @@ Bool TAppEncCfg::parseCfg( Int argc, TChar* argv[] )
     ("TemporalFilterFutureReference", m_gopBasedTemporalFilterFutureReference, true, "Enable referencing of future frames in the GOP based temporal filter. This is typically disabled for Low Delay configurations.")
     ("TemporalFilterStrengthFrame*", m_gopBasedTemporalFilterStrengths, std::map<Int, Double>(), "Strength for every * frame in GOP based temporal filter, where * is an integer."
                                                                                                    " E.g. --TemporalFilterStrengthFrame8 0.95 will enable GOP based temporal filter at every 8th frame with strength 0.95");
+#if TEXT_CODEC
+  opts.addOptions()
+    ("TextSCC_DisplaceAlignSizeinWidth,-dasiw", m_textSCCDisplaceAlignSizeinWidth, 8, "TextSCC: width displacement size of character boxes in text regions")
+    ("TextSCC_DisplaceAlignSizeinHeight,-dasih", m_textSCCDisplaceAlignSizeinHeight, 32, "TextSCC: height displacement size of character boxes in text regions");
+#endif
 
 #if EXTENSION_360_VIDEO
   TExt360AppEncCfg::TExt360AppEncCfgContext ext360CfgContext;
@@ -2212,6 +2221,11 @@ Bool TAppEncCfg::parseCfg( Int argc, TChar* argv[] )
 
 Void TAppEncCfg::xCheckParameter()
 {
+#if 0 // CNN_FILTERING
+  m_bLoopFilterDisable = true;
+  m_bUseSAO = false;
+#endif
+
   if (m_decodedPictureHashSEIType==HASHTYPE_NONE)
   {
     fprintf(stderr, "******************************************************************\n");
@@ -2543,7 +2557,11 @@ Void TAppEncCfg::xCheckParameter()
   xConfirmPara( m_uiMaxCUWidth < ( 1 << (m_uiQuadtreeTULog2MinSize + m_uiQuadtreeTUMaxDepthIntra - 1) ), "QuadtreeTUMaxDepthInter must be less than or equal to the difference between log2(maxCUSize) and QuadtreeTULog2MinSize plus 1" );
 
   xConfirmPara(  m_maxNumMergeCand < 1,  "MaxNumMergeCand must be 1 or greater.");
+#if TEXT_CODEC_MERGE
+  xConfirmPara(  m_maxNumMergeCand > (5 + 1), "MaxNumMergeCand must be (5 + 1) or smaller.");
+#else
   xConfirmPara(  m_maxNumMergeCand > 5,  "MaxNumMergeCand must be 5 or smaller.");
+#endif
 
 #if ADAPTIVE_QP_SELECTION
   xConfirmPara( m_bUseAdaptQpSelect == true && m_iQP < 0,                                              "AdaptiveQpSelection must be disabled when QP < 0.");

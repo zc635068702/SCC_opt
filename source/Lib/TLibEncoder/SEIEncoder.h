@@ -119,6 +119,9 @@ public:
   Void initDecodedPictureHashSEI(SEIDecodedPictureHash *sei, TComPic *pcPic, std::string &rHashString, const BitDepths &bitDepths);
   Void initTemporalLevel0IndexSEI(SEITemporalLevel0Index *sei, TComSlice *slice);
   Void initSEIGreenMetadataInfo(SEIGreenMetadataInfo *sei, UInt u);
+#if TEXT_CODEC
+  Void initSEITextSCCInfo(SEITextSCCInfo *seiSEITextSCCInfo);
+#endif
 
 private:
   TEncCfg* m_pcCfg;

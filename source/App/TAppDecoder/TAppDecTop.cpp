@@ -140,6 +140,13 @@ Void TAppDecTop::decode()
   Bool openedReconFile = false; // reconstruction file not yet opened. (must be performed after SPS is seen)
   Bool loopFiltered = false;
 
+#if TEXT_CODEC
+  Int iNumDecoded = 0;
+  Bool getDpsFlag = false;
+  DisplacementParameterSet* dps = NULL;
+  TDecGop* m_cGOPDecoder        = NULL;
+#endif
+
   while (!!bitstreamFile)
   {
     /* location serves to work around a design fault in the decoder, whereby
@@ -155,6 +162,9 @@ Void TAppDecTop::decode()
     AnnexBStats stats = AnnexBStats();
 
     InputNALUnit nalu;
+#if TEXT_CODEC && LAYERED_DEC == 0
+    Bool eof =
+#endif
     byteStreamNALUnit(bytestream, nalu.getBitstream().getFifo(), stats);
 
     // call actual decoding function
@@ -178,6 +188,33 @@ Void TAppDecTop::decode()
       else
       {
         bNewPicture = m_cTDecTop.decode(nalu, m_iSkipFrame, m_iPOCLastDisplay);
+#if TEXT_CODEC
+        if (nalu.m_nalUnitType == NAL_UNIT_SPS)
+        {
+          iNumDecoded++;
+
+          // TextSCC works if finds text layer
+          if (m_cTDecTop.sps_copy->getLayerFlag() == false)
+            m_textSCCFlag = true;
+
+          if (m_textSCCFlag)
+            m_cGOPDecoder = m_cTDecTop.getGOPDecoder();
+        }
+        if (m_textSCCFlag && nalu.m_nalUnitType == NAL_UNIT_SUFFIX_SEI && !getDpsFlag)
+        {
+          SEIMessages& seis = m_cTDecTop.getPcPic()->getSEIs();
+          // textinfo is at start of SEI
+          SEI* sei = *seis.begin();
+          SEITextSCCInfo *textinfo = new SEITextSCCInfo;
+          *textinfo = (SEITextSCCInfo&)*sei;
+          dps = textinfo->dpsInfo;
+          delete textinfo;
+          textinfo = NULL;
+          m_cGOPDecoder->setTextSCCParameterSet(dps);
+          getDpsFlag = true;
+        }
+#endif
+
         if (bNewPicture)
         {
           bitstreamFile.clear();
@@ -246,6 +283,31 @@ Void TAppDecTop::decode()
           m_cTDecTop.markCurrentPictureAfterILFforShortTermRef( pcListPic );
         }
       }
+
+#if TEXT_CODEC && LAYERED_DEC == 0
+      if (m_textSCCFlag && iNumDecoded == 2)
+      {
+        TComPic* pcPic = *(--pcListPic->end());
+        TComPicYuv* pcPicYuvRec = pcPic->getPicYuvRec();
+        m_cGOPDecoder->setTextLayerRec(pcPicYuvRec);
+        pcListPic->clear();
+        iNumDecoded--;
+      }
+      else if (m_textSCCFlag && iNumDecoded == 1)
+      {
+        if (!bitstreamFile)
+        {
+          TComPic* pcPic;
+          if (eof)
+            pcPic = *(pcListPic->begin());
+          else
+            pcPic = *(--pcListPic->end());
+          m_cGOPDecoder->yuvStitch(pcPic, m_outputColourSpaceConvert);
+          xDestroyTextSCCclass(dps, m_cGOPDecoder);
+          m_textSCCFlag = false;
+        }
+      }
+#endif
 
       // write reconstruction to file
       if( bNewPicture )
@@ -344,6 +406,19 @@ Void TAppDecTop::xInitDecLib()
   m_arLabels.clear();
 #endif
 }
+
+#if TEXT_CODEC
+Void TAppDecTop::xDestroyTextSCCclass(DisplacementParameterSet* dps, TDecGop* m_cGOPDecoder)
+{
+  if (dps != NULL)
+  {
+    delete dps;
+    dps = NULL;
+  }
+  if (m_cGOPDecoder->getTextLayerRec() != NULL)
+    m_cGOPDecoder->setTextLayerRec(NULL);
+}
+#endif
 
 /** \param pcListPic list of pictures to be written to file
     \param tId       temporal sub-layer ID

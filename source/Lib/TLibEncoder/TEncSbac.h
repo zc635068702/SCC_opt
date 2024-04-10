@@ -87,6 +87,9 @@ public:
 
   Void  codeVPS                ( const TComVPS* pcVPS );
   Void  codeSPS                ( const TComSPS* pcSPS     );
+#if TEXT_CODEC
+  Void  codeSPSHgtWdt          ( const TComSPS* pcSPS     );
+#endif
   Void  codePPS                ( const TComPPS* pcPPS     );
   Void  codeSliceHeader        ( TComSlice* pcSlice );
   Void  codeTilesWPPEntryPoint ( TComSlice* pSlice );
@@ -205,6 +208,9 @@ private:
   ContextModel3DBuffer m_cCUQtCbfSCModel;
   ContextModel3DBuffer m_cCUTransSubdivFlagSCModel;
   ContextModel3DBuffer m_cCUQtRootCbfSCModel;
+#if IBC_MVD_ADAPT_RESOLUTION
+  ContextModel3DBuffer m_cCUIBCMvd32PelSCModel;
+#endif
 
   ContextModel3DBuffer m_cCUSigCoeffGroupSCModel;
   ContextModel3DBuffer m_cCUSigSCModel;

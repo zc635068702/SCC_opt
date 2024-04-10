@@ -39,6 +39,10 @@
 #include "TEncSlice.h"
 #include <math.h>
 
+#if IBC_ME_FROM_VTM
+#include "IbcHashMap.h"
+#endif
+
 //! \ingroup TLibEncoder
 //! \{
 
@@ -447,6 +451,14 @@ Void TEncSlice::initEncSlice( TComPic* pcPic, const Int pocLast, const Int pocCu
   rpcSlice->setSliceSegmentMode     ( m_pcCfg->getSliceSegmentMode()     );
   rpcSlice->setSliceSegmentArgument ( m_pcCfg->getSliceSegmentArgument() );
   rpcSlice->setMaxNumMergeCand      ( m_pcCfg->getMaxNumMergeCand()      );
+
+#if IBC_ME_FROM_VTM
+  if ((m_pcCfg->getUseHashBasedIntraBCSearch() && m_pcCfg->getUseIntraBlockCopy()))
+  {
+    m_pcCuEncoder->getIbcHashMap().destroy();
+    m_pcCuEncoder->getIbcHashMap().init(rpcSlice->getSPS()->getPicWidthInLumaSamples(), rpcSlice->getSPS()->getPicHeightInLumaSamples());
+  }
+#endif
 }
 
 
@@ -807,6 +819,17 @@ Void TEncSlice::compressSlice( TComPic* pcPic, const Bool bCompressEntireSlice, 
   {
     xSetPredDefault(lastPalette, lastPaletteSize, pcSlice);
   }
+
+#if IBC_ME_FROM_VTM
+  if (pcSlice->getSPS()->getSpsScreenExtension().getUseIntraBlockCopy() && m_pcCfg->getUseHashBasedIntraBCSearch())
+  {
+    m_pcCuEncoder->getIbcHashMap().rebuildPicHashMap(pcPic->getPicYuvTrueOrg());
+  }
+#endif
+
+#if PMVP_ON
+  m_pcPredSearch->resetMVPPosPred();
+#endif
 
   // Adjust initial state if this is the start of a dependent slice.
   {

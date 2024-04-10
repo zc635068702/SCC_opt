@@ -1560,5 +1560,41 @@ Void SEIEncoder::initSEIGreenMetadataInfo(SEIGreenMetadataInfo *seiGreenMetadata
     seiGreenMetadataInfo->m_xsdMetricValue = u;
 }
 
+#if TEXT_CODEC
+Void SEIEncoder::initSEITextSCCInfo(SEITextSCCInfo *seiSEITextSCCInfo)
+{
+  int paraIdx = 0;
+  DisplacementParameterSet* dps = m_pcCfg->getTextSCCParameterSet();
+
+  seiSEITextSCCInfo->getCfg(paraIdx); paraIdx++;
+  dps->rowNumber = dps->charBoxHeight.size();
+
+  seiSEITextSCCInfo->getCfg(paraIdx); paraIdx++;
+  seiSEITextSCCInfo->writeDiffPara(&dps->charBoxHeightDiff,      dps->charBoxHeight);
+
+  seiSEITextSCCInfo->getCfg(paraIdx); paraIdx++;
+  seiSEITextSCCInfo->writeDiffPara(&dps->topOfFirstCharDiff,     dps->topOfFirstChar);
+
+  seiSEITextSCCInfo->getCfg(paraIdx); paraIdx++;
+  seiSEITextSCCInfo->writeDiffPara(&dps->leftOfFirstCharDiff,    dps->leftOfFirstChar);
+
+  seiSEITextSCCInfo->getCfg(paraIdx); paraIdx++;
+  seiSEITextSCCInfo->writeDiffPara(&dps->rightOfLastCharDiff,    dps->rightOfLastChar);
+
+  seiSEITextSCCInfo->getCfg(paraIdx); paraIdx++;
+  // dps->widthAlignSize;
+
+  seiSEITextSCCInfo->getCfg(paraIdx); paraIdx++;
+  seiSEITextSCCInfo->writeDiffPara(&dps->charBoxNumDiff,         dps->charBoxNum);
+
+  seiSEITextSCCInfo->getCfg(paraIdx); paraIdx++;
+  seiSEITextSCCInfo->writeDiffPara(&dps->intervalOfLeftOfCharsDiff, dps->intervalOfLeftOfChars);
+
+  seiSEITextSCCInfo->getCfg(paraIdx); paraIdx++;
+  seiSEITextSCCInfo->writeDiffPara(&dps->biasOfLeftOfCharsDiff,     dps->biasOfLeftOfChars);
+
+  seiSEITextSCCInfo->setTextSCCParameterSet(dps);
+}
+#endif
 
 //! \}

@@ -55,6 +55,10 @@
 #include "TDecBinCoder.h"
 #include "TDecBinCoderCABAC.h"
 
+#if TEXT_CODEC
+#include "Utilities/displacement.h"
+#endif
+
 //! \ingroup TLibDecoder
 //! \{
 
@@ -81,6 +85,11 @@ private:
   Int                   m_decodedPictureHashSEIEnabled;  ///< Checksum(3)/CRC(2)/MD5(1)/disable(0) acting on decoded picture hash SEI message
   UInt                  m_numberOfChecksumErrorsDetected;
 
+#if TEXT_CODEC
+  TComPicYuv*           m_pcTextLayerRec;
+  DisplacementParameterSet* dps;
+#endif
+
 public:
   TDecGop();
   virtual ~TDecGop();
@@ -101,6 +110,13 @@ public:
   Void setDecodedPictureHashSEIEnabled(Int enabled) { m_decodedPictureHashSEIEnabled = enabled; }
   UInt getNumberOfChecksumErrorsDetected() const { return m_numberOfChecksumErrorsDetected; }
 
+#if TEXT_CODEC
+  Void          setTextLayerRec   ( TComPicYuv* p )          { m_pcTextLayerRec = p;     }
+  TComPicYuv*   getTextLayerRec   () const                   { return  m_pcTextLayerRec; }
+  Void          setTextSCCParameterSet (DisplacementParameterSet* p)       { dps = p;    }
+  DisplacementParameterSet* getTextSCCParameterSet() const                 { return dps; }
+  Void          yuvStitch( TComPic* pcPic, const InputColourSpaceConversion snr_conversion );
+#endif
 };
 
 //! \}

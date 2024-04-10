@@ -39,6 +39,10 @@
 #include "TLibCommon/TComTU.h"
 #include "TLibCommon/TComPrediction.h"
 
+#if K0149_BLOCK_STATISTICS
+#include "TLibCommon/dtrace_blockstatistics.h"
+#endif
+
 //! \ingroup TLibDecoder
 //! \{
 
@@ -253,6 +257,12 @@ Void TDecCu::xDecodeCU( TComDataCU*const pcCU, const UInt uiAbsPartIdx, const UI
     return;
   }
 
+#if K0149_BLOCK_STATISTICS && RExt__DECODER_DEBUG_BIT_STATISTICS
+  g_bBitsStatistic = true;
+  g_iBitsCabac = 0;
+  g_iBitsEp = 0;
+#endif
+
   if( uiDepth <= pps.getMaxCuDQPDepth() && pps.getUseDQP())
   {
     setdQPFlag(true);
@@ -274,7 +284,6 @@ Void TDecCu::xDecodeCU( TComDataCU*const pcCU, const UInt uiAbsPartIdx, const UI
   {
     m_pcEntropyDecoder->decodeSkipFlag( pcCU, uiAbsPartIdx, uiDepth );
   }
-
 
   if( pcCU->isSkipped(uiAbsPartIdx) )
   {
@@ -314,6 +323,7 @@ Void TDecCu::xDecodeCU( TComDataCU*const pcCU, const UInt uiAbsPartIdx, const UI
         pcCU->getCUMvField( RefPicList( uiRefListIdx ) )->setAllMvField( cMvFieldNeighbours[ 2*uiMergeIndex + uiRefListIdx ], SIZE_2Nx2N, uiAbsPartIdx, uiDepth );
       }
     }
+
     xFinishDecodeCU( pcCU, uiAbsPartIdx, uiDepth, isLastCtuOfSliceSegment );
     return;
   }
@@ -369,6 +379,22 @@ Void TDecCu::xFinishDecodeCU( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth,
   }
 
   isLastCtuOfSliceSegment = xDecodeSliceEnd( pcCU, uiAbsPartIdx );
+
+#if K0149_BLOCK_STATISTICS && RExt__DECODER_DEBUG_BIT_STATISTICS
+  TComSlice * pcSlice = pcCU->getSlice();
+  const TComSPS &sps = *(pcSlice->getSPS());
+  UInt uiLPelX = pcCU->getCUPelX() + g_auiRasterToPelX[g_auiZscanToRaster[uiAbsPartIdx]];
+  UInt uiTPelY = pcCU->getCUPelY() + g_auiRasterToPelY[g_auiZscanToRaster[uiAbsPartIdx]];
+  int cuWidth = sps.getMaxCUWidth() >> uiDepth;
+  int cuHeight = cuWidth;
+
+  int cuBpp = int(float(g_iBitsEp + float(g_iBitsCabac) / 32768) / cuWidth / cuHeight * 1000);
+
+  DTRACE_BLOCK_SCALAR(pcCU->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::CU_BPP), cuBpp);
+  g_bBitsStatistic = false;
+  g_iBitsCabac = 0;
+  g_iBitsEp = 0;
+#endif
 }
 
 Void TDecCu::xDecompressCU( TComDataCU* pCtu, UInt uiAbsPartIdx,  UInt uiDepth )
@@ -413,6 +439,86 @@ Void TDecCu::xDecompressCU( TComDataCU* pCtu, UInt uiAbsPartIdx,  UInt uiDepth )
 
   m_ppcCU[uiDepth]->copySubCU( pCtu, uiAbsPartIdx );
 
+#if K0149_BLOCK_STATISTICS
+  // CU level info: depth, skip_flag, pred_mode, palette_flag
+  int cuWidth = sps.getMaxCUWidth() >> uiDepth;
+  int cuHeight = cuWidth;
+  DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::QT_Depth), uiDepth);
+  DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::SkipFlag), pCtu->getSkipFlag(uiAbsPartIdx));
+  DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::PredMode), pCtu->getPredictionMode(uiAbsPartIdx));
+  DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::PaletteFlag), pCtu->getPaletteModeFlag(uiAbsPartIdx));
+  DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::CU_ROOT_CBF), pCtu->getQtRootCbf(uiAbsPartIdx));
+
+  if (pCtu->getPredictionMode(uiAbsPartIdx) == MODE_INTRA)
+  {
+    // INTRA mode info
+    DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::Part_Size), SIZE_2Nx2N);
+    DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::MergeFlag), 0);
+    DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::IbcFlag), 0);
+    DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), uiLPelX, uiTPelY, cuWidth, cuHeight, GetBlockStatisticName(BlockStatistic::Luma_IntraMode), pCtu->getIntraDir(CHANNEL_TYPE_LUMA, uiAbsPartIdx));
+  }
+  else
+  {
+    // INTER mode info
+    PartSize ePartSize = pCtu->getPartitionSize(uiAbsPartIdx);
+    UInt uiNumPU = (ePartSize == SIZE_2Nx2N ? 1 : (ePartSize == SIZE_NxN ? 4 : 2));
+    for (UInt uiPartIdx = 0; uiPartIdx < uiNumPU; uiPartIdx++)
+    {
+      Int  puWidth, puHeight;
+      UInt uiSubPartIdx, uiPartAddr;
+      m_ppcCU[uiDepth]->getPartIndexAndSize(uiPartIdx, uiPartAddr, puWidth, puHeight);
+      uiSubPartIdx = uiAbsPartIdx + uiPartAddr;
+
+      UInt puPosX = pCtu->getCUPelX() + g_auiRasterToPelX[g_auiZscanToRaster[uiSubPartIdx]];
+      UInt puPosY = pCtu->getCUPelY() + g_auiRasterToPelY[g_auiZscanToRaster[uiSubPartIdx]];
+
+
+      // get IBC flag
+      int ibcFlag = 0;
+      for (int refList = 0; refList < 2; refList++)
+      {
+        RefPicList eRefPicList = RefPicList(refList);
+        int        refIdx = pCtu->getCUMvField(eRefPicList)->getRefIdx(uiSubPartIdx);
+        if (refIdx != -1 && pCtu->getSlice()->getRefPic(eRefPicList, refIdx)->getPOC() == pCtu->getSlice()->getPOC())
+        {
+          ibcFlag = 1;
+        }
+      }
+
+      DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::Part_Size), pCtu->getPartitionSize(uiSubPartIdx));
+      DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::MergeFlag), pCtu->getMergeFlag(uiSubPartIdx));
+      DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::MergeIdx), pCtu->getMergeIndex(uiSubPartIdx));
+      DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::IbcFlag), ibcFlag);
+
+      // motion info
+      DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::InterDir), pCtu->getInterDir(uiSubPartIdx));
+      if (pCtu->getInterDir(uiSubPartIdx) != 2 /* PRED_L0 */)
+      {
+        int mvHor = pCtu->getCUMvField(REF_PIC_LIST_0)->getMv(uiSubPartIdx).getHor();
+        int mvVer = pCtu->getCUMvField(REF_PIC_LIST_0)->getMv(uiSubPartIdx).getVer();
+        int mvdHor = pCtu->getCUMvField(REF_PIC_LIST_0)->getMvd(uiSubPartIdx).getHor();
+        int mvdVer = pCtu->getCUMvField(REF_PIC_LIST_0)->getMvd(uiSubPartIdx).getVer();
+
+        DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::RefIdxL0), pCtu->getCUMvField(REF_PIC_LIST_0)->getRefIdx(uiSubPartIdx));
+
+        DTRACE_BLOCK_VECTOR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::MVL0), mvHor, mvVer);
+        DTRACE_BLOCK_VECTOR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::MVDL0), mvdHor, mvdVer);
+      }
+      if (pCtu->getInterDir(uiSubPartIdx) != 1 /* PRED_L1 */)
+      {
+        int mvHor = pCtu->getCUMvField(REF_PIC_LIST_1)->getMv(uiSubPartIdx).getHor();
+        int mvVer = pCtu->getCUMvField(REF_PIC_LIST_1)->getMv(uiSubPartIdx).getVer();
+        int mvdHor = pCtu->getCUMvField(REF_PIC_LIST_1)->getMvd(uiSubPartIdx).getHor();
+        int mvdVer = pCtu->getCUMvField(REF_PIC_LIST_1)->getMvd(uiSubPartIdx).getVer();
+
+        DTRACE_BLOCK_SCALAR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::RefIdxL1), pCtu->getCUMvField(REF_PIC_LIST_1)->getRefIdx(uiSubPartIdx));
+        DTRACE_BLOCK_VECTOR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::MVL1), mvHor, mvVer);
+        DTRACE_BLOCK_VECTOR(pCtu->getSlice()->getPOC(), puPosX, puPosY, puWidth, puHeight, GetBlockStatisticName(BlockStatistic::MVDL1), mvdHor, mvdVer);
+      }
+    }
+  }
+#endif
+
   switch( m_ppcCU[uiDepth]->getPredictionMode(0) )
   {
     case MODE_INTER:
@@ -447,6 +553,10 @@ Void TDecCu::xDecompressCU( TComDataCU* pCtu, UInt uiAbsPartIdx,  UInt uiDepth )
 
 Void TDecCu::xReconInter( TComDataCU* pcCU, UInt uiDepth )
 {
+#if TEXT_CODEC_MERGE
+  if (!pcCU->getMergeFlag(0) || pcCU->getMergeIndex(0) != TEXT_CODEC_MERGE_FLAG)
+  {
+#endif
   Int numParts = pcCU->getNumPartitions();
   for (Int iPartIdx = 0; iPartIdx < numParts; iPartIdx++)
   {
@@ -475,6 +585,9 @@ Void TDecCu::xReconInter( TComDataCU* pcCU, UInt uiDepth )
       }
     }
   }
+#if TEXT_CODEC_MERGE
+  }
+#endif
 
   // inter prediction
 #if MCTS_ENC_CHECK
@@ -603,6 +716,42 @@ TDecCu::xIntraRecBlk(       TComYuv*    pcRecoYuv,
 #if DEBUG_STRING
   const Int debugPredModeMask=DebugStringGetPredModeMask(MODE_INTRA);
   std::string *psDebug=(DebugOptionList::DebugString_InvTran.getInt()&debugPredModeMask) ? &sDebug : 0;
+#endif
+
+#if K0149_BLOCK_STATISTICS
+  BlockStatistic blockStatsCbf, blockStatsCoeff;
+  switch (compID)
+  {
+  case COMPONENT_Y:
+    blockStatsCbf = BlockStatistic::TU_CBF_Y;
+    blockStatsCoeff = BlockStatistic::TU_COEFF_ENERGY_Y;
+    break;
+  //case COMPONENT_Cb:
+  //  blockStatsCbf = BlockStatistic::TU_CBF_CB;
+  //  blockStatsCoeff = BlockStatistic::TU_COEFF_ENERGY_CB;
+  //  break;
+  //case COMPONENT_Cr:
+  //  blockStatsCbf = BlockStatistic::TU_CBF_CR;
+  //  blockStatsCoeff = BlockStatistic::TU_COEFF_ENERGY_CR;
+  //  break;
+  default:
+    break;
+  }
+
+  const int nrCoeff = tuRect.width * tuRect.height;
+  int64_t e = 0;
+  for (int i = 0; i < nrCoeff; i++)
+  {
+    e += pcCoeff[i] * pcCoeff[i];
+  }
+  if (e > 1000)
+    e = 1000;
+
+  if (compID == COMPONENT_Y)
+  {
+    DTRACE_BLOCK_SCALAR(pcCU->getSlice()->getPOC(), tuRect.x0 + pcCU->getCUPelX(), tuRect.y0 + pcCU->getCUPelY(), tuRect.width, tuRect.height, GetBlockStatisticName(blockStatsCbf), pcCU->getCbf(uiAbsPartIdx, compID, rTu.GetTransformDepthRel()));
+    DTRACE_BLOCK_SCALAR(pcCU->getSlice()->getPOC(), tuRect.x0 + pcCU->getCUPelX(), tuRect.y0 + pcCU->getCUPelY(), tuRect.width, tuRect.height, GetBlockStatisticName(blockStatsCoeff), int(e));
+  }
 #endif
 
   if (pcCU->getCbf(uiAbsPartIdx, compID, rTu.GetTransformDepthRel()) != 0)

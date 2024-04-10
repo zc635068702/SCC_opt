@@ -67,6 +67,9 @@ public:
 
   virtual Void  codeVPS                 ( const TComVPS* pcVPS )                                      = 0;
   virtual Void  codeSPS                 ( const TComSPS* pcSPS )                                      = 0;
+#if TEXT_CODEC
+  virtual Void  codeSPSHgtWdt           ( const TComSPS* pcSPS )                                      = 0;
+#endif
   virtual Void  codePPS                 ( const TComPPS* pcPPS )                                      = 0;
   virtual Void  codeSliceHeader         ( TComSlice* pcSlice )                                  = 0;
 
@@ -138,6 +141,9 @@ public:
   Void encodeVPS               ( const TComVPS* pcVPS);
   // SPS
   Void encodeSPS               ( const TComSPS* pcSPS );
+#if TEXT_CODEC
+  Void encodeSPSHgtWdt         ( const TComSPS* pcSPS );
+#endif
   Void encodePPS               ( const TComPPS* pcPPS );
   Void encodeSplitFlag         ( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth, Bool bRD = false );
   Void encodeCUTransquantBypassFlag( TComDataCU* pcCU, UInt uiAbsPartIdx, Bool bRD = false );

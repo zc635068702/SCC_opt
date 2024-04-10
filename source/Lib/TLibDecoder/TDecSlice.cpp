@@ -119,6 +119,10 @@ Void TDecSlice::decompressSlice(TComInputBitstream** ppcSubstreams, TComPic* pcP
     xSetPredDefault(lastPalette, lastPaletteSize, pcSlice->getSPS());
   }
 
+#if PMVP_ON
+  m_pcEntropyDecoder->resetMVPPosPred();
+#endif
+
   // The first CTU of the slice is the first coded substream, but the global substream number, as calculated by getSubstreamForCtuAddr may be higher.
   // This calculates the common offset for all substreams in this slice.
   const UInt subStreamOffset=pcPic->getSubstreamForCtuAddr(startCtuRsAddr, true, pcSlice);
@@ -230,6 +234,9 @@ Void TDecSlice::decompressSlice(TComInputBitstream** ppcSubstreams, TComPic* pcP
 #if ENC_DEC_TRACE
     g_bJustDoIt = g_bEncDecTraceEnable;
 #endif
+#if K0149_BLOCK_STATISTICS
+    g_bStatisticJustDoIt = g_bStatisticEncDecTraceEnable;
+#endif
 
 #if DECODER_PARTIAL_CONFORMANCE_CHECK != 0
     const UInt numRemainingBitsPriorToCtu=ppcSubstreams[uiSubStrm]->getNumBitsLeft();
@@ -299,6 +306,9 @@ Void TDecSlice::decompressSlice(TComInputBitstream** ppcSubstreams, TComPic* pcP
 
 #if ENC_DEC_TRACE
     g_bJustDoIt = g_bEncDecTraceDisable;
+#endif
+#if K0149_BLOCK_STATISTICS
+    g_bStatisticJustDoIt = g_bStatisticEncDecTraceDisable;
 #endif
 
     //Store probabilities of second CTU in line into buffer

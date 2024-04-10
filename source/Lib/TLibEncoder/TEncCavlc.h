@@ -88,6 +88,9 @@ public:
   Void  codeVPS                 ( const TComVPS* pcVPS );
   Void  codeVUI                 ( const TComVUI *pcVUI, const TComSPS* pcSPS );
   Void  codeSPS                 ( const TComSPS* pcSPS );
+#if TEXT_CODEC
+  Void  codeSPSHgtWdt           ( const TComSPS* pcSPS );
+#endif
   Void  codePPS                 ( const TComPPS* pcPPS );
   Void  codeSliceHeader         ( TComSlice* pcSlice );
   Void  codePTL                 ( const TComPTL* pcPTL, Bool profilePresentFlag, Int maxNumSubLayersMinus1);

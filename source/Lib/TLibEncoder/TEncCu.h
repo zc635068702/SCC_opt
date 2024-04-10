@@ -49,6 +49,11 @@
 #include "TEncEntropy.h"
 #include "TEncSearch.h"
 #include "TEncRateCtrl.h"
+
+#if IBC_ME_FROM_VTM
+#include "IbcHashMap.h"
+#endif
+
 //! \ingroup TLibEncoder
 //! \{
 
@@ -105,6 +110,10 @@ private:
   Bool                    m_bEnableIBCTUACTRD;
   Bool                    m_bEnableInterTUACTRD;
 
+#if IBC_ME_FROM_VTM
+  IbcHashMap              m_ibcHashMap;
+#endif
+
 public:
   /// copy parameters from encoder class
   Void  init                ( TEncTop* pcEncTop );
@@ -129,6 +138,10 @@ public:
   Int   updateCtuDataISlice ( TComDataCU* pCtu, Int width, Int height );
 
   Void setFastDeltaQp       ( Bool b)                 { m_bFastDeltaQP = b;         }
+
+#if IBC_ME_FROM_VTM
+  IbcHashMap& getIbcHashMap() { return m_ibcHashMap; }
+#endif
 
 protected:
   Void  finishCU            ( TComDataCU*  pcCU, UInt uiAbsPartIdx );

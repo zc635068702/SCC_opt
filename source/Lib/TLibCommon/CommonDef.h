@@ -130,7 +130,11 @@ static const Int NOT_VALID =                                       -1;
 
 static const Int AMVP_MAX_NUM_CANDS =                               2; ///< AMVP: advanced motion vector prediction - max number of final candidates
 static const Int AMVP_DECIMATION_FACTOR =                           4;
+#if TEXT_CODEC_MERGE
+static const Int MRG_MAX_NUM_CANDS =                                6; ///< MERGE
+#else
 static const Int MRG_MAX_NUM_CANDS =                                5; ///< MERGE
+#endif
 
 
 static const Int MAX_TLAYER =                                       7; ///< Explicit temporal layer QP offset - max number of temporal layer

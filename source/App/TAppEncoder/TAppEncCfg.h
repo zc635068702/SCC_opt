@@ -540,6 +540,13 @@ protected:
   Bool      m_disableIntraBoundaryFilter;                     ///  flag for enabling(default)/disabling intra boundary filtering
   Bool      m_bTransquantBypassInferTUSplit;                  ///< Infer TU splitting for transquant bypass CUs
   Bool      m_bNoTUSplitIntraACTEnabled;
+#if TEXT_CODEC
+  Int       m_textSCCDisplaceAlignSizeinWidth;
+  Int       m_textSCCDisplaceAlignSizeinHeight;
+  Bool      m_textSCCFlag = false;                           ///< if use textSCC
+  Bool      m_backgroundLayerFlag = true;                    ///< text layer: false, background layer: true
+  Bool      first_NAL_UNIT_SUFFIX_SEI = true;
+#endif
 
 #if EXTENSION_360_VIDEO
   TExt360AppEncCfg m_ext360;

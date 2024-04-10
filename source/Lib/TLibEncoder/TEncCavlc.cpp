@@ -561,6 +561,19 @@ Void TEncCavlc::codeSPS( const TComSPS* pcSPS )
     WRITE_FLAG( 0,                                  "separate_colour_plane_flag");
   }
 
+#if TEXT_CODEC
+  WRITE_FLAG( pcSPS->getLayerFlag(),                "background_layer_flag");
+#if TEXT_CODEC_MERGE
+  if (!pcSPS->getLayerFlag())
+  {
+    int* backGroundColor = pcSPS->getBgColor();
+    WRITE_UVLC( backGroundColor[0], "background_color1");
+    WRITE_UVLC( backGroundColor[1], "background_color2");
+    WRITE_UVLC( backGroundColor[2], "background_color3");
+  }
+#endif
+#endif
+
   WRITE_UVLC( pcSPS->getPicWidthInLumaSamples (),   "pic_width_in_luma_samples" );
   WRITE_UVLC( pcSPS->getPicHeightInLumaSamples(),   "pic_height_in_luma_samples" );
   Window conf = pcSPS->getConformanceWindow();
@@ -610,6 +623,11 @@ Void TEncCavlc::codeSPS( const TComSPS* pcSPS )
   }
   WRITE_FLAG( pcSPS->getUseAMP() ? 1 : 0,                                            "amp_enabled_flag" );
   WRITE_FLAG( pcSPS->getUseSAO() ? 1 : 0,                                            "sample_adaptive_offset_enabled_flag");
+
+#if IBC_MVD_ADAPT_RESOLUTION
+  WRITE_UVLC(pcSPS->getMvdPrecHor(), "mvd_prec_hor");
+  WRITE_UVLC(pcSPS->getMvdPrecVer(), "mvd_prec_ver");
+#endif
 
   WRITE_FLAG( pcSPS->getUsePCM() ? 1 : 0,                                            "pcm_enabled_flag");
   if( pcSPS->getUsePCM() )
@@ -741,6 +759,14 @@ Void TEncCavlc::codeSPS( const TComSPS* pcSPS )
   }
   xWriteRbspTrailingBits();
 }
+
+#if TEXT_CODEC
+Void TEncCavlc::codeSPSHgtWdt( const TComSPS* pcSPS )
+{
+  WRITE_CODE( pcSPS->getPicWidthInLumaSamples (), 16, "pic_width_in_luma_samples" );
+  WRITE_CODE( pcSPS->getPicHeightInLumaSamples(), 16, "pic_height_in_luma_samples" );
+}
+#endif
 
 Void TEncCavlc::codeVPS( const TComVPS* pcVPS )
 {

@@ -485,6 +485,9 @@ Void TEncCu::xCompressCU( TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, const 
 
   Bool isPerfectMatch = false;
   Bool terminateAllFurtherRDO = false;
+#if TEXT_CODEC_MERGE_EARLY_TERM
+  Bool terminateFurtherSplit = false;
+#endif
 
   TComMv iMVCandList[4][10];
   memset( iMVCandList, 0, sizeof( TComMv )*4*10 );
@@ -509,6 +512,14 @@ Void TEncCu::xCompressCU( TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, const 
   const UInt uiTPelY   = rpcBestCU->getCUPelY();
   const UInt uiBPelY   = uiTPelY + rpcBestCU->getHeight(0) - 1;
   const UInt uiWidth   = rpcBestCU->getWidth(0);
+
+#if PMVP_ON
+  const UInt uiTempMVPPosNum = m_pcPredSearch->getMVPPosNum(); // before recursive
+#endif
+#if PMVP_PRINT_CU
+  std::cout << std::setw(uiDepth*2+5) << "S CU=" << uiLPelX << "," << uiTPelY << "," << uiRPelX-uiLPelX+1 << "," << uiBPelY-uiTPelY+1 << " ";
+  std::cout << "MVPPosNum=" << m_pcPredSearch->getMVPPosNum() << "\n";
+#endif
 
   Int iBaseQP = xComputeQP( rpcBestCU, uiDepth );
   Int iMinQP;
@@ -980,8 +991,24 @@ Void TEncCu::xCompressCU( TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, const 
 
         if (rpcTempCU->getSlice()->getPPS()->getPpsScreenExtension().getUseIntraBlockCopy())
         {
+#if TEXT_CODEC_MERGE_PRINT
+          std::cout << endl << "Best cost before merge=" << rpcBestCU->getTotalCost() << endl;
+#endif
           xCheckRDCostIntraBCMerge2Nx2N( rpcBestCU, rpcTempCU );
           rpcTempCU->initEstData( uiDepth, iQP, bIsLosslessMode );
+#if TEXT_CODEC_MERGE_PRINT
+          std::cout << "CU pos=" << rpcBestCU->getCUPelX() << " " << rpcBestCU->getCUPelY() << " " << int(rpcBestCU->getWidth(0)) << " " << int(rpcBestCU->getHeight(0));
+          // std::cout << ", MergeFlag=" << int(rpcTempCU->getMergeFlag(0)) << ", MergeIndex=" << int(rpcTempCU->getMergeIndex(0)) << " " << int(rpcBestCU->getMergeIndex(0));
+          std::cout << ", BestMergeIndex=" << int(rpcBestCU->getMergeIndex(0)) << endl;
+          std::cout << "Best cost after merge=" << rpcBestCU->getTotalCost() << endl;
+#endif
+#if TEXT_CODEC_MERGE_EARLY_TERM
+          if (rpcBestCU->getMergeIndex(0) == TEXT_CODEC_MERGE_FLAG
+              && rpcBestCU->getTotalCost() <= TEXT_CODEC_MERGE_EARLY_TERM_COST)
+          {
+            terminateFurtherSplit = true;
+        }
+#endif
         }
 
         if( !rpcBestCU->isSkipped(0) ) // avoid very complex intra if it is unlikely
@@ -1257,7 +1284,11 @@ Void TEncCu::xCompressCU( TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, const 
     bSubBranch = false;
   }
 
+#if TEXT_CODEC_MERGE_EARLY_TERM
+  if (!terminateAllFurtherRDO && bSubBranch && uiDepth < sps.getLog2DiffMaxMinCodingBlockSize() && (!getFastDeltaQp() || uiWidth > fastDeltaQPCuMaxSize || bBoundary) && !terminateFurtherSplit)
+#else
   if( !terminateAllFurtherRDO && bSubBranch && uiDepth < sps.getLog2DiffMaxMinCodingBlockSize() && (!getFastDeltaQp() || uiWidth > fastDeltaQPCuMaxSize || bBoundary))
+#endif
   {
     PaletteInfoBuffer tempPalettePredictor;
 
@@ -1475,6 +1506,87 @@ Void TEncCu::xCompressCU( TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, const 
       lastPalette[ch] = NULL;
     }
   }
+
+#if PMVP_ON
+  if ( uiDepth == rpcBestCU->getDepth( 0 ) )
+  {
+    m_pcPredSearch->setMVPPosNum(uiTempMVPPosNum); // cancel sub-CU's AMVP
+    // if is intra mode
+    if ( ! rpcBestCU->isSkipped(0) && ! rpcBestCU->getPredictionMode(0) )
+    {
+      const Int numPart = rpcBestCU->getNumPartitions();
+      for( Int partIdx = 0; partIdx < numPart; ++partIdx )
+      {
+        Int xPUPos, yPUPos, width, height;
+        UInt partAddr = 0;
+        rpcBestCU->getPartIndexAndSize( partIdx, partAddr, width, height );
+        if ( rpcBestCU->isIntraBC(partAddr) && ! rpcBestCU->getMergeFlag(partAddr) )
+        {
+          rpcBestCU->getPartPosition(partIdx, xPUPos, yPUPos, width, height);
+          Int bestMVPIdx = rpcBestCU->getMVPIdx(REF_PIC_LIST_0, partAddr);
+          TComMv cMv = rpcBestCU->getCUMvField( REF_PIC_LIST_0 )->getMv(partAddr);
+#if PMVP_PRINT_ENC
+          std::cout << std::setw(uiDepth*2+5) << "PU=" << xPUPos << "," << yPUPos << "," << width << "," << height;
+          std::cout << " Part=" << partIdx+1;
+          std::cout << " MVP=" << bestMVPIdx;
+#endif
+          if (bestMVPIdx == 2) // PMVP
+          {
+#if PMVP_CACHE_MVD_THRESH
+            TComMv mvd = rpcBestCU->getCUMvField( REF_PIC_LIST_0 )->getMvd(partAddr);
+            if (mvd.getAbsHor() + mvd.getAbsVer() >= PMVP_CACHE_MVD_THRESH)
+#endif
+              m_pcPredSearch->addMVPPosPred( xPUPos, yPUPos ); // add PU position into PMVP list
+#if PMVP_PRINT_ENC
+            Int posIdx = rpcBestCU->getMVPPosIdx(partAddr);
+            Int posNum = rpcBestCU->getMVPPosNum(partAddr);
+
+            TComMv pMv = m_pcPredSearch->getMVPPosPred(posIdx);
+            TComMv mvd = rpcBestCU->getCUMvField( REF_PIC_LIST_0 )->getMvd( partAddr );
+            std::cout << " posIdx=" << posIdx << "/" << posNum-1;
+            std::cout << " posPred=" << pMv.getHor() << "," << pMv.getVer();
+            std::cout << " posMvd=" << mvd.getHor() << "," << mvd.getVer();
+#endif
+          }
+          else // original MVP
+          {
+            Int xRefPos = xPUPos + ( cMv.getHor() >> 2 );
+            Int yRefPos = yPUPos + ( cMv.getVer() >> 2 );
+            m_pcPredSearch->addMVPPosPred( xPUPos, yPUPos );
+            m_pcPredSearch->addMVPPosPred( xRefPos, yRefPos ); // add ref position into PMVP list
+          }
+#if PMVP_PRINT_ENC
+          std::cout << " MV=" << cMv.getHor() << "," << cMv.getVer();
+          std::cout << "\n";
+#endif
+        }
+      }
+    }
+  }
+#endif
+
+#if PMVP_PRINT_CU
+  std::cout << std::setw(uiDepth*2+5) << "E CU=" << uiLPelX << "," << uiTPelY << "," << uiRPelX-uiLPelX+1 << "," << uiBPelY-uiTPelY+1 << " ";
+  std::cout << "MVPPosNum=" << m_pcPredSearch->getMVPPosNum() << " ";
+  if ( uiDepth == rpcBestCU->getDepth( 0 ) ) // && !bBoundary
+  {
+    if ( rpcBestCU->isIntraBC(0) ) std::cout << "IBC ";
+    if ( rpcBestCU->isSkipped(0) ) std::cout << "Skip ";
+    else if ( rpcBestCU->getPredictionMode(0) )
+    {
+      if ( rpcBestCU->getPaletteModeFlag(0) ) std::cout << "Palette ";
+      else std::cout << "Intra ";
+    }
+    else
+    {
+      if ( rpcBestCU->getMergeFlag(0) ) std::cout << "Merge ";
+      else std::cout << "AMVP ";
+    }
+  }
+  std::cout << "\n";
+#endif
+
+
   if (bBoundary)
   {
     return;
@@ -2740,6 +2852,10 @@ Void TEncCu::xCheckRDCostIntraBCMerge2Nx2N( TComDataCU*& rpcBestCU, TComDataCU*&
             continue;
           }
 
+#if TEXT_CODEC_MERGE
+          if (mergeCand != TEXT_CODEC_MERGE_FLAG)
+          {
+#endif
           if ( rpcTempCU->getSlice()->getRefPic( REF_PIC_LIST_0, cMvFieldNeighbours[mergeCand<<1].getRefIdx() )->getPOC() != rpcTempCU->getSlice()->getPOC() )
           {
             continue;
@@ -2750,6 +2866,16 @@ Void TEncCu::xCheckRDCostIntraBCMerge2Nx2N( TComDataCU*& rpcBestCU, TComDataCU*&
           {
             continue;
           }
+#if TEXT_CODEC_MERGE
+          }
+          else // if (mergeCand == TEXT_CODEC_MERGE_FLAG)
+          {
+            if (rpcTempCU->getSlice()->getSPS()->getBgColor() == NULL)
+            {
+              continue;
+            }
+          }
+#endif
 
           // set MC parameters
           rpcTempCU->setPredModeSubParts( MODE_INTER, 0, depth ); // interprets depth relative to LCU level
@@ -2980,6 +3106,10 @@ Void TEncCu::xCheckRDCostIntraBC( TComDataCU *&rpcBestCU,
                                                     bUse1DSearchFor8x8,
                                                     false,
                                                     testPredOnly
+#if IBC_ME_FROM_VTM
+                                                    ,
+                                                    m_ibcHashMap
+#endif
                                                   );
 
   if ( bValid && (rpcTempCU->getWidth( 0 ) <= 16) && (eSize == SIZE_2NxN || eSize == SIZE_Nx2N) )

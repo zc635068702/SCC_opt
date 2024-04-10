@@ -74,6 +74,9 @@ TEncSbac::TEncSbac()
 , m_cCUQtCbfSCModel                    ( 1,             NUM_QT_CBF_CTX_SETS,    NUM_QT_CBF_CTX_PER_SET               , m_contextModels + m_numContextModels, m_numContextModels)
 , m_cCUTransSubdivFlagSCModel          ( 1,             1,                      NUM_TRANS_SUBDIV_FLAG_CTX            , m_contextModels + m_numContextModels, m_numContextModels)
 , m_cCUQtRootCbfSCModel                ( 1,             1,                      NUM_QT_ROOT_CBF_CTX                  , m_contextModels + m_numContextModels, m_numContextModels)
+#if IBC_MVD_ADAPT_RESOLUTION
+, m_cCUIBCMvd32PelSCModel              ( 1,             1,                      2                                    , m_contextModels + m_numContextModels, m_numContextModels)
+#endif
 , m_cCUSigCoeffGroupSCModel            ( 1,             2,                      NUM_SIG_CG_FLAG_CTX                  , m_contextModels + m_numContextModels, m_numContextModels)
 , m_cCUSigSCModel                      ( 1,             1,                      NUM_SIG_FLAG_CTX                     , m_contextModels + m_numContextModels, m_numContextModels)
 , m_cCuCtxLastX                        ( 1,             NUM_CTX_LAST_FLAG_SETS, NUM_CTX_LAST_FLAG_XY                 , m_contextModels + m_numContextModels, m_numContextModels)
@@ -144,6 +147,9 @@ Void TEncSbac::resetEntropy           (const TComSlice *pSlice)
   m_cCUDeltaQpSCModel.initBuffer                  ( eSliceType, iQp, (UChar*)INIT_DQP );
   m_cCUQtCbfSCModel.initBuffer                    ( eSliceType, iQp, (UChar*)INIT_QT_CBF );
   m_cCUQtRootCbfSCModel.initBuffer                ( eSliceType, iQp, (UChar*)INIT_QT_ROOT_CBF );
+#if IBC_MVD_ADAPT_RESOLUTION
+  m_cCUIBCMvd32PelSCModel.initBuffer              ( eSliceType, iQp,  (UChar*)INIT_IBC_MVD32Pel );
+#endif
   m_cCUSigCoeffGroupSCModel.initBuffer            ( eSliceType, iQp, (UChar*)INIT_SIG_CG_FLAG );
   m_cCUSigSCModel.initBuffer                      ( eSliceType, iQp, (UChar*)INIT_SIG_FLAG );
   m_cCuCtxLastX.initBuffer                        ( eSliceType, iQp, (UChar*)INIT_LAST );
@@ -167,7 +173,6 @@ Void TEncSbac::resetEntropy           (const TComSlice *pSlice)
   m_cRunSCModel.initBuffer                        ( eSliceType, iQp, (UChar*)INIT_RUN);
   m_paletteScanRotationModeFlagSCModel.initBuffer ( eSliceType, iQp, (UChar*)INIT_SCAN_ROTATION_FLAG );
   m_cCUColourTransformFlagSCModel.initBuffer      ( eSliceType, iQp, (UChar*)INIT_COLOUR_TRANS );
-
   for (UInt statisticIndex = 0; statisticIndex < RExt__GOLOMB_RICE_ADAPTATION_STATISTICS_SETS ; statisticIndex++)
   {
     m_golombRiceAdaptationStatistics[statisticIndex] = 0;
@@ -211,6 +216,9 @@ SliceType TEncSbac::determineCabacInitIdx(const TComSlice *pSlice)
       curCost += m_cCUDeltaQpSCModel.calcCost                  ( curSliceType, qp, (UChar*)INIT_DQP );
       curCost += m_cCUQtCbfSCModel.calcCost                    ( curSliceType, qp, (UChar*)INIT_QT_CBF );
       curCost += m_cCUQtRootCbfSCModel.calcCost                ( curSliceType, qp, (UChar*)INIT_QT_ROOT_CBF );
+#if IBC_MVD_ADAPT_RESOLUTION
+      curCost += m_cCUIBCMvd32PelSCModel.calcCost              ( curSliceType, qp, (UChar*)INIT_IBC_MVD32Pel );
+#endif
       curCost += m_cCUSigCoeffGroupSCModel.calcCost            ( curSliceType, qp, (UChar*)INIT_SIG_CG_FLAG );
       curCost += m_cCUSigSCModel.calcCost                      ( curSliceType, qp, (UChar*)INIT_SIG_FLAG );
       curCost += m_cCuCtxLastX.calcCost                        ( curSliceType, qp, (UChar*)INIT_LAST );
@@ -234,7 +242,6 @@ SliceType TEncSbac::determineCabacInitIdx(const TComSlice *pSlice)
       curCost += m_cRunSCModel.calcCost                        ( curSliceType, qp, (UChar*)INIT_RUN );
       curCost += m_paletteScanRotationModeFlagSCModel.calcCost ( curSliceType, qp, (UChar*)INIT_SCAN_ROTATION_FLAG );
       curCost += m_cCUColourTransformFlagSCModel.calcCost      ( curSliceType, qp, (UChar*)INIT_COLOUR_TRANS );
-
       if (curCost < bestCost)
       {
         bestSliceType = curSliceType;
@@ -260,6 +267,14 @@ Void TEncSbac::codeSPS( const TComSPS* /*pcSPS*/ )
   assert (0);
   return;
 }
+
+#if TEXT_CODEC
+Void TEncSbac::codeSPSHgtWdt( const TComSPS* /*pcSPS*/ )
+{
+  assert (0);
+  return;
+}
+#endif
 
 Void TEncSbac::codePPS( const TComPPS* /*pcPPS*/ )
 {
@@ -457,7 +472,23 @@ Void TEncSbac::codeMVPIdx ( TComDataCU* pcCU, UInt uiAbsPartIdx, RefPicList eRef
   Int iSymbol = pcCU->getMVPIdx(eRefList, uiAbsPartIdx);
   Int iNum = AMVP_MAX_NUM_CANDS;
 
+#if PMVP_ON
+  xWriteUnaryMaxSymbol(iSymbol, m_cMVPIdxSCModel.get(0), 1, iNum);
+  Int iRefFrame = pcCU->getCUMvField( eRefList )->getRefIdx( uiAbsPartIdx );
+  Int iCurFrame = pcCU->getSlice()->getNumRefIdx( REF_PIC_LIST_0 ) - 1;
+  if ( iRefFrame == iCurFrame && iSymbol == 2)
+  {
+    Int iMVPPosIdx = pcCU->getMVPPosIdx(uiAbsPartIdx);
+    Int iMVPPosNum = pcCU->getMVPPosNum(uiAbsPartIdx);
+#if PMVP_CACHE_MVD_THRESH
+    if (iMVPPosNum<0) iMVPPosNum=-iMVPPosNum;
+#endif
+    // max iMVPPosIdx: iMVPPosNum-1
+    xWriteTruncBinCode(iMVPPosIdx, iMVPPosNum-1);
+  }
+#else
   xWriteUnaryMaxSymbol(iSymbol, m_cMVPIdxSCModel.get(0), 1, iNum-1);
+#endif
 }
 
 Void TEncSbac::codePartSize( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth )
@@ -810,8 +841,113 @@ Void TEncSbac::codeMvd( TComDataCU* pcCU, UInt uiAbsPartIdx, RefPicList eRefList
   }
 
   const TComCUMvField* pcCUMvField = pcCU->getCUMvField( eRefList );
+#if IBC_MVD_ADAPT_RESOLUTION
+  Int iHor = pcCUMvField->getMvd(uiAbsPartIdx).getHor();
+  Int iVer = pcCUMvField->getMvd(uiAbsPartIdx).getVer();
+#if ADAPTIVE_IBC_MVD
+  bool PMVPFlag = false;
+#if PMVP_ON
+  Int iSymbol = pcCU->getMVPIdx(eRefList, uiAbsPartIdx);
+  Int iRefFrame = pcCU->getCUMvField(eRefList)->getRefIdx(uiAbsPartIdx);
+  Int iCurFrame = pcCU->getSlice()->getNumRefIdx(REF_PIC_LIST_0) - 1;
+  if (iRefFrame == iCurFrame && iSymbol == 2)
+    PMVPFlag = true;
+#endif
+#endif
+#if LAYERED_IBC_MVD
+  Bool m_backgroundLayerFlag = pcCU->getSlice()->getSPS()->getLayerFlag();
+#else
+  Bool m_backgroundLayerFlag = false;
+#endif
+#if ADAPTIVE_IBC_MVD
+  if (m_backgroundLayerFlag == false && PMVPFlag == false)
+#else
+  if (m_backgroundLayerFlag == false)
+#endif
+  {
+    UInt mvdPrecHor = pcCU->getSlice()->getSPS()->getMvdPrecHor();
+    UInt mvdPrecVer = pcCU->getSlice()->getSPS()->getMvdPrecVer();
+#if IBC_MVD_ADAPT_RESOLUTION == 1
+    bool mvd32PelFlag = !(iHor & ((1 << mvdPrecHor) - 1)) && !(iVer & ((1 << mvdPrecVer) - 1));
+    m_pcBinIf->encodeBin(mvd32PelFlag, *m_cCUIBCMvd32PelSCModel.get(0));
+    if (mvd32PelFlag)
+    {
+      iHor >>= mvdPrecHor;
+      iVer >>= mvdPrecVer;
+    }
+#elif IBC_MVD_ADAPT_RESOLUTION == 2
+    bool mvd32PelFlagHor = !(iHor & ((1 << mvdPrecHor) - 1));
+    bool mvd32PelFlagVer = !(iVer & ((1 << mvdPrecVer) - 1));
+    m_pcBinIf->encodeBin(mvd32PelFlagHor, m_cCUIBCMvd32PelSCModel.get(0, 0, 0));
+    m_pcBinIf->encodeBin(mvd32PelFlagVer, m_cCUIBCMvd32PelSCModel.get(0, 0, 1));
+    if (mvd32PelFlagHor)
+    {
+      iHor >>= mvdPrecHor;
+    }
+    if (mvd32PelFlagVer)
+    {
+      iVer >>= mvdPrecVer;
+    }
+#elif IBC_MVD_ADAPT_RESOLUTION == 3
+    {
+      int iHorSign = 0 > iHor ? 1 : 0;
+      int iVerSign = 0 > iVer ? 1 : 0;
+      UInt uiHorAbs = 0 > iHor ? -iHor : iHor;
+      UInt uiVerAbs = 0 > iVer ? -iVer : iVer;
+      int iHorLSB = uiHorAbs & ((1 << mvdPrecHor) - 1);
+      int iVerLSB = uiVerAbs & ((1 << mvdPrecVer) - 1);
+      uiHorAbs = uiHorAbs >> mvdPrecHor;
+      uiVerAbs = uiVerAbs >> mvdPrecVer;
+
+      const Bool bHorAbsGr0 = uiHorAbs != 0;
+      const Bool bVerAbsGr0 = uiVerAbs != 0;
+
+      xWriteEpExGolomb(iHorLSB, 0);
+      xWriteEpExGolomb(iVerLSB, 0);
+
+      ContextModel* pCtx = m_cCUMvdSCModel.get(0);
+      m_pcBinIf->encodeBin(bHorAbsGr0 ? 1 : 0, *pCtx);
+      m_pcBinIf->encodeBin(bVerAbsGr0 ? 1 : 0, *pCtx);
+      pCtx++;
+
+      if (bHorAbsGr0)
+      {
+        m_pcBinIf->encodeBin(uiHorAbs > 1 ? 1 : 0, *pCtx);
+      }
+
+      if (bVerAbsGr0)
+      {
+        m_pcBinIf->encodeBin(uiVerAbs > 1 ? 1 : 0, *pCtx);
+      }
+
+      if (bHorAbsGr0 || iHorLSB)
+      {
+        if (uiHorAbs > 1)
+        {
+          xWriteEpExGolomb(uiHorAbs - 2, 1);
+        }
+
+        m_pcBinIf->encodeBinEP(iHorSign);
+      }
+
+      if (bVerAbsGr0 || iVerLSB)
+      {
+        if (uiVerAbs > 1)
+        {
+          xWriteEpExGolomb(uiVerAbs - 2, 1);
+        }
+
+        m_pcBinIf->encodeBinEP(iVerSign);
+      }
+    }
+    return;
+#endif
+  }
+#else
   const Int iHor = pcCUMvField->getMvd( uiAbsPartIdx ).getHor();
   const Int iVer = pcCUMvField->getMvd( uiAbsPartIdx ).getVer();
+#endif
+
   ContextModel* pCtx = m_cCUMvdSCModel.get( 0 );
 
   m_pcBinIf->encodeBin( iHor != 0 ? 1 : 0, *pCtx );

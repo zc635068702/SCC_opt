@@ -120,6 +120,10 @@ protected:
   Void xWriteSEIAnnotatedRegions                  (const SEIAnnotatedRegions& sei, const TComSPS *sps);
 #endif
 
+#if TEXT_CODEC
+  Void xWriteSEITextSCCInfo                       (const SEITextSCCInfo &sei);
+#endif
+
   Void xWriteSEIpayloadData(TComBitIf& bs, const SEI& sei, const TComSPS *sps);
   Void xWriteByteAlign();
 };

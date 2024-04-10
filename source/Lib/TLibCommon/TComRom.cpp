@@ -647,6 +647,16 @@ Bool   g_HLSTraceEnable = true;
 Bool   g_bJustDoIt = false;
 UInt64 g_nSymbolCounter = 0;
 #endif
+
+#if K0149_BLOCK_STATISTICS
+FILE*  g_hStatisticTrace = NULL;
+Bool   g_bStatisticJustDoIt = false;
+const Bool g_bStatisticEncDecTraceEnable = true;
+const Bool g_bStatisticEncDecTraceDisable = false;
+Bool g_bBitsStatistic = false;
+Int64 g_iBitsCabac = 0;
+Int64 g_iBitsEp = 0;
+#endif
 // ====================================================================================================================
 // Scanning order & context model mapping
 // ====================================================================================================================
